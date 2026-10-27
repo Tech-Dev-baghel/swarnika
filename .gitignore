@@ -1,0 +1,8 @@
+node_modules
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+# database + uploaded photos (back these up!)
+data/
+.env.local
