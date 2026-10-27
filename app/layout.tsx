@@ -5,6 +5,9 @@ import { getPublicData } from "@/lib/db";
 import { img } from "@/lib/pricing";
 import { SITE_URL } from "@/lib/site";
 
+// Every page reads live store data (prices, settings), so never serve a stale pre-built copy.
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata(): Promise<Metadata> {
   const { settings, slides } = await getPublicData();
   const title = `${settings.brandName} Jewels — Gold, Diamond & Bridal Jewellery`;

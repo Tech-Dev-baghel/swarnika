@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getDB } from "@/lib/db";
+import { getDB, storageMode } from "@/lib/db";
 import { img, inr } from "@/lib/pricing";
 
 export default async function Dashboard() {
@@ -17,6 +17,11 @@ export default async function Dashboard() {
   ];
   return (
     <div>
+      {storageMode() === "readonly" && (
+        <div className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <b>Database not connected — nothing you change here can be saved yet.</b> In your Vercel project open <b>Storage</b> → create an <b>Upstash Redis (KV)</b> database and a <b>Blob</b> store → connect both to this project → redeploy.
+        </div>
+      )}
       {!process.env.ADMIN_PASSWORD && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <b>You're using the default password (admin123).</b> Before going live, create a file named <code>.env.local</code> in the project folder with <code>ADMIN_PASSWORD=your-strong-password</code> and restart the site.

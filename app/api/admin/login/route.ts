@@ -1,10 +1,11 @@
+import { withStore } from "@/lib/api";
 import { NextResponse } from "next/server";
 import { checkPassword, COOKIE, cookieOptions, makeToken } from "@/lib/auth";
 import { clear, clientIp, record, tooMany } from "@/lib/ratelimit";
 
 const WINDOW = 10 * 60 * 1000;
 
-export async function POST(req: Request) {
+async function _POST(req: Request) {
   const key = "login:" + clientIp(req);
   if (tooMany(key, 8, WINDOW)) {
     return NextResponse.json({ error: "Too many wrong attempts. Please wait 10 minutes and try again." }, { status: 429 });
@@ -19,3 +20,5 @@ export async function POST(req: Request) {
   res.cookies.set(COOKIE, makeToken(), cookieOptions);
   return res;
 }
+
+export const POST = withStore(_POST);

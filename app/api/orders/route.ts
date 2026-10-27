@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { bad, json } from "@/lib/api";
+import { bad, json, withStore } from "@/lib/api";
 import { applyCoupon } from "@/lib/coupons";
 import { getDB, mutate, newId } from "@/lib/db";
 import { orderEmails } from "@/lib/mail";
@@ -9,7 +9,7 @@ import type { Order } from "@/lib/types";
 
 const s = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
 
-export async function POST(req: Request) {
+async function _POST(req: Request) {
   if (limited("order:" + clientIp(req), 15, 10 * 60 * 1000)) return bad("Too many orders from this connection. Please call us instead.", 429);
   const body = await req.json().catch(() => null);
   if (!body) return bad("Invalid request");
@@ -43,3 +43,5 @@ export async function POST(req: Request) {
   revalidatePath("/", "layout");
   return json({ id: result.id, total: result.total }, 201);
 }
+
+export const POST = withStore(_POST);

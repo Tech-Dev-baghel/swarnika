@@ -1,5 +1,5 @@
 import { revalidatePath } from "next/cache";
-import { bad, guard, json } from "@/lib/api";
+import { bad, guard, json, withStore } from "@/lib/api";
 import { getDB, mutate, newId } from "@/lib/db";
 import type { DB, Order } from "@/lib/types";
 
@@ -15,13 +15,13 @@ async function resolve(params: Promise<{ resource: string }>) {
   return (RESOURCES as readonly string[]).includes(resource) ? (resource as R) : null;
 }
 
-export async function GET(_: Request, { params }: { params: Promise<{ resource: string }> }) {
+async function _GET(_: Request, { params }: { params: Promise<{ resource: string }> }) {
   const denied = await guard(); if (denied) return denied;
   const r = await resolve(params); if (!r) return bad("Unknown resource", 404);
   return json(list(await getDB(), r));
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ resource: string }> }) {
+async function _POST(req: Request, { params }: { params: Promise<{ resource: string }> }) {
   const denied = await guard(); if (denied) return denied;
   const r = await resolve(params); if (!r) return bad("Unknown resource", 404);
   const body = (await req.json()) as Item;
@@ -40,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ resourc
   return json(item, 201);
 }
 
-export async function PUT(req: Request, { params }: { params: Promise<{ resource: string }> }) {
+async function _PUT(req: Request, { params }: { params: Promise<{ resource: string }> }) {
   const denied = await guard(); if (denied) return denied;
   const r = await resolve(params); if (!r) return bad("Unknown resource", 404);
   const body = (await req.json()) as Item;
@@ -71,7 +71,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ resource
   return json(out);
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ resource: string }> }) {
+async function _DELETE(req: Request, { params }: { params: Promise<{ resource: string }> }) {
   const denied = await guard(); if (denied) return denied;
   const r = await resolve(params); if (!r) return bad("Unknown resource", 404);
   const id = new URL(req.url).searchParams.get("id");
@@ -90,3 +90,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ resou
   revalidatePath("/", "layout");
   return json({ ok: true });
 }
+
+export const GET = withStore(_GET);
+export const POST = withStore(_POST);
+export const PUT = withStore(_PUT);
+export const DELETE = withStore(_DELETE);

@@ -36,14 +36,27 @@ Needs Node.js 20 or newer.
    ```
 
 ## 3. Hosting
-The store saves its data to files in the `data/` folder, so it needs a host with a permanent disk:
-- a VPS (Hostinger, DigitalOcean, AWS Lightsail and similar) with Node 20+
-- Railway or Render with a persistent volume mounted at `/data` of the project
-- your own office PC or server
 
-Put Nginx or Caddy in front of it for https and your domain.
+### Option A: Vercel (free tier works)
+On Vercel the disk is read-only, so the store keeps its data in two free Vercel storage add-ons:
+1. Push this project to GitHub and import it in Vercel. This is enough for the site to open with the demo content.
+2. In the Vercel project, open **Storage** and add two things:
+   - **Upstash for Redis** (it may show as KV): click **Create** and **Connect to Project**. This adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
+   - **Blob**: click **Create** and **Connect to Project**. This adds `BLOB_READ_WRITE_TOKEN` automatically and is used for photos you upload.
+3. Under **Settings → Environment Variables**, add:
+   - `ADMIN_PASSWORD`: your password
+   - `SESSION_SECRET`: any long random text
+   - `COOKIE_SECURE`: `1`
+   - `SITE_URL`: your domain, for example https://www.yourstore.com
+   - optionally the `SMTP_*` email settings
+4. Go to **Deployments** and **Redeploy**.
 
-Vercel and Netlify won't work as-is, because they don't keep files between requests.
+The first visit copies the demo content into the database. From then on, everything you change in /admin is saved there.
+
+On Vercel, uploaded photos must be under 4 MB.
+
+### Option B: your own server (VPS or office PC)
+Use any machine with Node 20+. Data is saved in the `data/` folder, so you don't need any database. Run `npm run build`, then `npm start` (or PM2, as above), and put Nginx or Caddy in front of it for https.
 
 ## 4. Daily use (admin panel)
 | What you want to do | Where |
@@ -61,8 +74,8 @@ Customers can follow their order at **/track** using the order number and their 
 Cancelling an order puts its items back in stock. Un-cancelling takes them out again.
 
 ## 5. Backups
-- `data/db.json` holds all your data (products, orders, settings).
-- `data/uploads/` holds the photos you uploaded.
+- On your own server, `data/db.json` holds all your data (products, orders, settings) and `data/uploads/` holds uploaded photos.
+- On Vercel, the data is in Upstash Redis and photos are in Vercel Blob.
 
 Copy both somewhere safe regularly, or use **Admin → Backup & Restore**.
 

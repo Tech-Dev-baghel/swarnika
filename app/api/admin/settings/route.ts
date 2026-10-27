@@ -1,15 +1,15 @@
 import { revalidatePath } from "next/cache";
-import { guard, json } from "@/lib/api";
+import { guard, json, withStore } from "@/lib/api";
 import { getDB, mutate } from "@/lib/db";
 import type { Rate, Settings } from "@/lib/types";
 
-export async function GET() {
+async function _GET() {
   const denied = await guard(); if (denied) return denied;
   const db = await getDB();
   return json({ settings: db.settings, rates: db.rates });
 }
 
-export async function PUT(req: Request) {
+async function _PUT(req: Request) {
   const denied = await guard(); if (denied) return denied;
   const body = (await req.json()) as { settings?: Partial<Settings>; rates?: Rate[] };
   const out = await mutate((db) => {
@@ -20,3 +20,6 @@ export async function PUT(req: Request) {
   revalidatePath("/", "layout");
   return json(out);
 }
+
+export const GET = withStore(_GET);
+export const PUT = withStore(_PUT);
