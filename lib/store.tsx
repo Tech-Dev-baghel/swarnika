@@ -19,12 +19,14 @@ type Ctx = {
   setStoreOpen: (v: boolean) => void;
   bump: number;
   clearCart: () => void;
+  customer: SessionCustomer | null;
 };
+export type SessionCustomer = { id: string; name: string; wishlist: string[] };
 
 const StoreCtx = createContext<Ctx | null>(null);
 const KEY = "swarnika-store-v1";
 
-export function StoreProvider({ children }: { children: React.ReactNode }) {
+export function StoreProvider({ children, customer = null }: { children: React.ReactNode; customer?: SessionCustomer | null }) {
   const { products } = useData();
   const [cart, setCart] = useState<CartLine[]>([]);
   const [wishlist, setWishlist] = useState<string[]>([]);
@@ -49,8 +51,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setWishlist(w.filter((id) => ids.has(id)));
       }
     } catch {}
+    // Signed-in customers: merge this browser's wishlist with the one saved on their account.
+    if (customer) setWishlist((w) => Array.from(new Set([...customer.wishlist, ...w])).filter((id) => ids.has(id)));
     setLoaded(true);
-  }, [products]);
+  }, [products, customer]);
+
+  const synced = useRef<string>("");
+  useEffect(() => {
+    if (!loaded || !customer) return;
+    const key = JSON.stringify(wishlist);
+    if (key === synced.current || key === JSON.stringify(customer.wishlist)) { synced.current = key; return; }
+    const t = window.setTimeout(() => {
+      synced.current = key;
+      fetch("/api/account/wishlist", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: JSON.parse(key) }) }).catch(() => {});
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [wishlist, loaded, customer]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -85,8 +101,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({
     cart, wishlist, addToCart, setQty, removeFromCart, toggleWish,
-    cartCount: cart.reduce((n, l) => n + l.qty, 0), toast, showToast, storeOpen, setStoreOpen, bump, clearCart,
-  }), [cart, wishlist, addToCart, setQty, removeFromCart, toggleWish, toast, showToast, storeOpen, bump, clearCart]);
+    cartCount: cart.reduce((n, l) => n + l.qty, 0), toast, showToast, storeOpen, setStoreOpen, bump, clearCart, customer,
+  }), [cart, wishlist, addToCart, setQty, removeFromCart, toggleWish, toast, showToast, storeOpen, bump, clearCart, customer]);
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

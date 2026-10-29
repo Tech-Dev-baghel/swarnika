@@ -8,11 +8,14 @@ import { CloseIcon, ShieldIcon } from "@/components/Icons";
 import { useData } from "@/lib/data-context";
 import { inr } from "@/lib/pricing";
 import { MAX_QTY, useStore } from "@/lib/store";
+import type { Address } from "@/lib/types";
 
 type Customer = { name: string; phone: string; email: string; address: string; city: string; pincode: string };
 
 export default function CartPage() {
-  const { cart, setQty, removeFromCart, clearCart } = useStore();
+  const { cart, setQty, removeFromCart, clearCart, customer } = useStore();
+  const [saved, setSaved] = useState<Address[]>([]);
+  const [saveAddr, setSaveAddr] = useState(true);
   const { getProduct, price } = useData();
   const [code, setCode] = useState("");
   const [applied, setApplied] = useState<{ code: string; label: string } | null>(null);
@@ -26,6 +29,19 @@ export default function CartPage() {
   const lines = cart.map((l) => ({ ...l, p: getProduct(l.id)! })).filter((l) => l.p);
   const subtotal = lines.reduce((n, l) => n + price(l.p) * l.qty, 0);
   const [discount, setDiscount] = useState(0);
+
+  // Signed-in customers: pre-fill the delivery form from their account.
+  useEffect(() => {
+    if (step !== "details" || !customer) return;
+    fetch("/api/account").then((r) => (r.ok ? r.json() : null)).then((me) => {
+      if (!me) return;
+      setSaved(me.addresses ?? []);
+      const d: Address | undefined = (me.addresses ?? []).find((a: Address) => a.isDefault) ?? me.addresses?.[0];
+      setC((cur) => (cur.name || cur.address ? cur : {
+        name: d?.name ?? me.name, phone: d?.phone ?? me.phone ?? "", email: me.email ?? "", address: d?.address ?? "", city: d?.city ?? "", pincode: d?.pincode ?? "",
+      }));
+    }).catch(() => {});
+  }, [step, customer]);
 
   // Re-check the coupon whenever the bag total changes (percent coupons depend on it).
   useEffect(() => {
@@ -51,7 +67,7 @@ export default function CartPage() {
     setBusy(true); setErr("");
     const r = await fetch("/api/orders", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ customer: c, items: cart, coupon: applied?.code }),
+      body: JSON.stringify({ customer: c, items: cart, coupon: applied?.code, saveAddress: !!customer && saveAddr }),
     });
     const j = await r.json().catch(() => ({}));
     setBusy(false);
@@ -66,7 +82,7 @@ export default function CartPage() {
         <p className="mt-6 font-display text-5xl text-wine-800">Thank you!</p>
         <p className="mt-3 text-ink/60">Your order <span className="font-medium text-wine-800">{placed.id}</span> for {inr(placed.total)} has been placed. Our team will call you to confirm payment and delivery. Save your order number to track it anytime.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link href={`/track?id=${placed.id}`} className="rounded-full border border-wine-700 px-7 py-3 text-sm text-wine-700">Track this order</Link>
+          <Link href={customer ? `/account/orders/${placed.id}` : `/track?id=${placed.id}`} className="rounded-full border border-wine-700 px-7 py-3 text-sm text-wine-700">{customer ? "View in my account" : "Track this order"}</Link>
           <Link href="/shop" className="rounded-full bg-wine-700 px-7 py-3 text-sm text-white">Continue shopping</Link>
         </div>
       </motion.div>
@@ -114,12 +130,23 @@ export default function CartPage() {
               </motion.ul>
             ) : (
               <motion.form key="details" id="checkout" onSubmit={placeOrder} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="grid gap-3 rounded-3xl border border-wine-100 bg-white p-6 sm:grid-cols-2">
+                {customer ? (
+                  saved.length > 0 && (
+                    <select aria-label="Saved addresses" onChange={(e) => { const a = saved.find((x) => x.id === e.target.value); if (a) setC({ ...c, name: a.name, phone: a.phone, address: a.address, city: a.city, pincode: a.pincode }); }} className={`${input} sm:col-span-2`} defaultValue="">
+                      <option value="" disabled>Choose a saved address…</option>
+                      {saved.map((a) => <option key={a.id} value={a.id}>{a.label}: {a.address}, {a.city}</option>)}
+                    </select>
+                  )
+                ) : (
+                  <p className="rounded-xl bg-gold-100/60 px-4 py-3 text-sm text-ink/70 sm:col-span-2"><Link href="/login?next=/cart" className="font-medium text-wine-700">Log in</Link> to use saved addresses and track this order in your account — or continue as a guest.</p>
+                )}
                 <input required placeholder="Full name" value={c.name} onChange={(e) => setC({ ...c, name: e.target.value })} className={input} aria-label="Full name" />
                 <input required placeholder="Mobile number" inputMode="tel" value={c.phone} onChange={(e) => setC({ ...c, phone: e.target.value })} className={input} aria-label="Mobile number" />
                 <input type="email" placeholder="Email (optional)" value={c.email} onChange={(e) => setC({ ...c, email: e.target.value })} className={`${input} sm:col-span-2`} aria-label="Email" />
                 <textarea required placeholder="House no., street, area" value={c.address} onChange={(e) => setC({ ...c, address: e.target.value })} className={`${input} min-h-24 sm:col-span-2`} aria-label="Address" />
                 <input required placeholder="City" value={c.city} onChange={(e) => setC({ ...c, city: e.target.value })} className={input} aria-label="City" />
                 <input required placeholder="Pincode" inputMode="numeric" value={c.pincode} onChange={(e) => setC({ ...c, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) })} className={input} aria-label="Pincode" />
+                {customer && <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={saveAddr} onChange={(e) => setSaveAddr(e.target.checked)} className="accent-[#7a2a38]" /> Save this address to my account</label>}
                 <p className="text-xs text-ink/50 sm:col-span-2">Pay on delivery or by UPI/card link — our team confirms every order by phone before dispatch.</p>
                 {err && <p className="text-sm text-red-700 sm:col-span-2">{err}</p>}
                 <button type="button" onClick={() => setStep("bag")} className="text-left text-sm text-wine-700 underline sm:col-span-2">← Back to bag</button>

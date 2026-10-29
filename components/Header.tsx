@@ -8,7 +8,7 @@ import { useData } from "@/lib/data-context";
 import { inr } from "@/lib/pricing";
 import { useStore } from "@/lib/store";
 import Photo from "./Photo";
-import { BagIcon, ChevronIcon, CloseIcon, HeartIcon, MenuIcon, PinIcon, SearchIcon, TruckIcon } from "./Icons";
+import { BagIcon, ChevronIcon, CloseIcon, HeartIcon, MenuIcon, PinIcon, SearchIcon, TruckIcon, UserIcon } from "./Icons";
 import { useEscape } from "@/lib/hooks";
 
 const SUGGESTIONS = ["gold necklace", "diamond earrings", "rings", "mangalsutra", "gold coin"];
@@ -98,7 +98,7 @@ function SearchBox({ onDone }: { onDone?: () => void }) {
 }
 
 export default function Header() {
-  const { cartCount, wishlist, setStoreOpen, bump } = useStore();
+  const { cartCount, wishlist, setStoreOpen, bump, customer } = useStore();
   const { menu, rates, settings } = useData();
   const [active, setActive] = useState<number | null>(null);
   const [drawer, setDrawer] = useState(false);
@@ -140,7 +140,9 @@ export default function Header() {
               <HeartIcon />
               {wishlist.length > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-gold-500 px-1 text-[10px] text-white">{wishlist.length}</span>}
             </Link>
-            <Link href="/track" className="hidden rounded-full p-2 hover:bg-wine-50 sm:block" aria-label="Track order" title="Track order"><TruckIcon /></Link>
+            <Link href={customer ? "/account" : "/login"} className="flex items-center gap-1.5 rounded-full p-2 hover:bg-wine-50" aria-label={customer ? "My account" : "Log in"} title={customer ? "My account" : "Log in / Register"}>
+              <UserIcon />{customer && <span className="hidden max-w-24 truncate text-sm lg:inline">{customer.name.split(" ")[0]}</span>}
+            </Link>
             <Link href="/cart" className="relative rounded-full p-2 hover:bg-wine-50" aria-label="Shopping bag">
               <motion.span key={bump} initial={{ scale: 1 }} animate={{ scale: bump ? [1, 1.35, 1] : 1, rotate: bump ? [0, -12, 8, 0] : 0 }} transition={{ duration: 0.5 }} className="block"><BagIcon /></motion.span>
               {cartCount > 0 && <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-wine-700 px-1 text-[10px] text-white">{cartCount}</span>}
@@ -231,7 +233,8 @@ export default function Header() {
                   </li>
                 ))}
               </ul>
-              <Link href="/track" onClick={() => setDrawer(false)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-wine-700 py-3 text-sm text-white"><TruckIcon /> Track your order</Link>
+              <Link href={customer ? "/account" : "/login"} onClick={() => setDrawer(false)} className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-wine-700 py-3 text-sm text-white"><UserIcon /> {customer ? `My account (${customer.name.split(" ")[0]})` : "Log in / Register"}</Link>
+              <Link href="/track" onClick={() => setDrawer(false)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-wine-700 py-3 text-sm text-wine-700"><TruckIcon /> Track an order</Link>
               <button onClick={() => { setDrawer(false); setStoreOpen(true); }} className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-wine-700 py-3 text-sm text-wine-700"><PinIcon /> Find a store</button>
             </motion.aside>
           </div>

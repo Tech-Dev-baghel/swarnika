@@ -1,87 +1,80 @@
-# Swarnika Jewels — jewellery store with admin panel (Next.js)
+# Swarnika Jewels — jewellery store with customer accounts and admin panel (Next.js + Postgres)
 
 ## 1. Run it on your computer
-```bash
-npm install
-npm run dev
-```
-- Website: http://localhost:3000
-- Admin panel: http://localhost:3000/admin (default password **admin123**)
 
-Needs Node.js 20 or newer.
-
-## 2. Before going live (5-minute checklist)
-1. Copy `.env.example` to `.env.local` and fill it in:
-   - `ADMIN_PASSWORD`: your own strong password. **Required.**
-   - `SESSION_SECRET`: any long random text.
-   - `SITE_URL`: your real web address, such as https://www.yourstore.com.
-   - `COOKIE_SECURE=1`: set this once the site runs on https.
-   - Optional: `SMTP_*` settings, so you get an email for every new order or appointment and customers get an order confirmation.
-2. In **Admin → Gold Rates & Settings**, set:
-   - your brand name, phone, email and address
-   - your WhatsApp number (this shows a chat button on the site) and Instagram
-   - today's gold rates
-3. In **Admin → Products**, replace the demo photos and prices with your own designs. Hide or delete the demo items you don't sell.
-4. Edit or replace the demo content: **Stores**, **Reviews**, **Homepage Banners** and **Coupons**.
-5. Build and start the site:
-   ```bash
-   npm run build
-   npm start          # runs on port 3000; set PORT=8080 to change it
+1. Install Node.js 20 or newer.
+2. In this folder run:
    ```
-   To keep it running after you close the window (and restart it automatically), use PM2:
-   ```bash
-   npm install -g pm2
-   pm2 start npm --name swarnika -- start
-   pm2 save
+   npm install
+   npm run dev
    ```
+3. Open http://localhost:3000 (the shop) and http://localhost:3000/admin (the admin panel).
 
-## 3. Hosting
+No database setup is needed on your PC: a built-in Postgres (PGlite) saves everything in the `data/` folder.
+To use a real Postgres instead, put `DATABASE_URL=...` in a `.env.local` file.
 
-### Option A: Vercel (free tier works)
-On Vercel the disk is read-only, so the store keeps its data in two free Vercel storage add-ons:
-1. Push this project to GitHub and import it in Vercel. This is enough for the site to open with the demo content.
-2. In the Vercel project, open **Storage** and add two things:
-   - **Upstash for Redis** (it may show as KV): click **Create** and **Connect to Project**. This adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
-   - **Blob**: click **Create** and **Connect to Project**. This adds `BLOB_READ_WRITE_TOKEN` automatically and is used for photos you upload.
-3. Under **Settings → Environment Variables**, add:
-   - `ADMIN_PASSWORD`: your password
-   - `SESSION_SECRET`: any long random text
-   - `COOKIE_SECURE`: `1`
-   - `SITE_URL`: your domain, for example https://www.yourstore.com
-   - optionally the `SMTP_*` email settings
-4. Go to **Deployments** and **Redeploy**.
+## 2. How logging in works
 
-The first visit copies the demo content into the database. From then on, everything you change in /admin is saved there.
+### Admin / staff
+1. **First time:** open `/admin`. It goes to **/admin/setup**, where you create the **Owner** account (name, email, password).
+   This page only works once — after the owner exists it is closed for good.
+2. **After that:** staff sign in at **/admin/login** with email + password.
+3. The owner adds more people in **Admin → Staff & Roles**:
+   - **Owner** — everything, including staff accounts and backups.
+   - **Manager** — everything except staff accounts and backups.
+   - **Staff** — orders, appointments, messages, customers, products and reviews only.
+4. Forgot password: **/admin/forgot** (needs email set up) — or the owner resets it from Staff & Roles.
+5. Wrong passwords are limited (8 tries per 15 minutes) and every sign-in is recorded in **Activity Log**.
 
-On Vercel, uploaded photos must be under 4 MB.
+### Customers
+- Create an account at **/register**, log in at **/login** with **email or mobile number** + password.
+- The person icon in the header opens **My Account**: orders and their status, saved addresses, profile, password, wishlist.
+- Wishlist and addresses follow the customer to any device; checkout fills in their saved address.
+- Guests can still check out without an account and track orders at **/track**.
+- Forgot password: **/forgot-password**. If email isn't set up, the customer calls you and staff press
+  **Create password reset link** on the customer's page in the admin and send it on WhatsApp.
 
-### Option B: your own server (VPS or office PC)
-Use any machine with Node 20+. Data is saved in the `data/` folder, so you don't need any database. Run `npm run build`, then `npm start` (or PM2, as above), and put Nginx or Caddy in front of it for https.
+## 3. Hosting on Vercel with the free Neon database
 
-## 4. Daily use (admin panel)
-| What you want to do | Where |
-| --- | --- |
-| Update today's gold rate (all prices recalculate) | Gold Rates & Settings |
-| Add or edit a product, upload photos, set stock, hide or show it | Products |
-| See new orders, call or WhatsApp the customer, update the status, print an invoice | Orders |
-| Store visit and video call requests | Appointments |
-| Discount codes | Coupons |
-| Homepage banners, categories, collections, brides, stores and reviews | their own sections |
-| Download a backup of everything, or restore one | Backup & Restore |
+1. Push this folder to GitHub and import it in Vercel (Framework: Next.js, no other settings needed).
+2. In your Vercel project open **Storage → Create Database → Neon (Serverless Postgres) → Free plan**,
+   then **Connect** it to the project (tick Production and Preview). This adds `DATABASE_URL` automatically.
+3. **Deployments → ⋯ → Redeploy.**
+4. Open `https://your-site.vercel.app/admin` and create the owner account.
 
-Customers can follow their order at **/track** using the order number and their phone number.
+The tables and demo products are created by themselves on the first visit. Uploaded photos are stored in the
+database too (up to about 4 MB each on Vercel), so no other storage service is needed.
 
-Cancelling an order puts its items back in stock. Un-cancelling takes them out again.
+Without a database connected the site still opens on Vercel with demo data, but nothing can be saved — the admin
+shows a banner explaining how to connect Neon.
+
+Recommended environment variables (Vercel → Settings → Environment Variables): `SITE_URL`, `SESSION_SECRET`,
+and the `SMTP_*` values if you want emails. See `.env.example`.
+
+### Own server (VPS or office PC)
+`npm install && npm run build && npm start` (port 3000). Put it behind https (e.g. Caddy or Nginx) and set
+`COOKIE_SECURE=1`. Use `DATABASE_URL` for a Postgres server, or leave it empty to use the built-in one in `data/`.
+
+## 4. The admin panel
+
+| Section | What it does |
+|---|---|
+| Dashboard | Today's sales, 30-day chart, recent orders, low stock, things waiting for you |
+| Reports | Sales by day, status, product, category, city, coupon and top customers for any date range; inventory value report; CSV export |
+| Orders | Search, filter, change status (stock is put back on cancel), private notes, printable invoice, CSV |
+| Appointments / Messages | Store-visit and video-call requests; contact-form inbox |
+| Customers | Search, order history, addresses, disable account, create password-reset link, CSV |
+| Products, Categories, Collections | Full catalogue with photo upload; price = weight × today's rate + making % + stones + GST |
+| Product Reviews | Approve or reject reviews written by customers |
+| Banners, Brides, Stores, Testimonials, Coupons, Subscribers | Homepage and marketing content |
+| Website Pages | Edit About, FAQ, Shipping, Returns, Privacy, Terms, or add new pages (shown at /p/your-page) |
+| Gold Rates & Settings | Daily rates (all prices update instantly), store details, announcement bar |
+| Staff & Roles, Activity Log, Backup, My Profile | Team accounts, who-did-what history, download/restore everything |
 
 ## 5. Backups
-- On your own server, `data/db.json` holds all your data (products, orders, settings) and `data/uploads/` holds uploaded photos.
-- On Vercel, the data is in Upstash Redis and photos are in Vercel Blob.
-
-Copy both somewhere safe regularly, or use **Admin → Backup & Restore**.
-
-To reset to the demo content, stop the site and delete `data/db.json`.
+**Admin → Backup → Download now** gives one JSON file with the whole catalogue, orders, customers and settings
+(passwords are never included). **Restore** loads such a file back. Neon also keeps its own point-in-time history.
 
 ## Notes
-- Demo photos are free-licence images from Unsplash (https://unsplash.com/license), loaded from Unsplash's servers. Replace them with your own product photography.
-- Payments are confirmed by phone, cash on delivery or a UPI link. Online card or UPI checkout (Razorpay, Cashfree) isn't included yet.
-- All animations switch off automatically for visitors who have "reduce motion" turned on.
+- Photos are from Unsplash for the demo — replace them with your own product photos in the admin.
+- Prices, rates and stock are always checked on the server when an order is placed.

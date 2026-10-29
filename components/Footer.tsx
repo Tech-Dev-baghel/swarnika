@@ -12,8 +12,8 @@ export default function Footer() {
   const [msg, setMsg] = useState("");
   const cols = [
     { title: "Shop", links: [["All Jewellery", "/shop"], ...categories.slice(0, 5).map((c) => [c.label, `/shop?category=${c.slug}`])] },
-    { title: "Customer Service", links: [["Track Order", "/track"], ["Your Bag", "/cart"], ["Store Locator", "/stores"], ["Book Appointment", "/stores"], ["Ring Size Guide", "/#guide"]] },
-    { title: "About", links: [["Our Collections", "/#collections"], ["Today's Gold Rate", "/gold-rate"], ["Savings Plan", "/#savings"], ["Gifting", "/#gifting"], ["Wishlist", "/wishlist"]] },
+    { title: "Customer Service", links: [["My Account", "/account"], ["Track Order", "/track"], ["Shipping", "/shipping"], ["Returns & Exchange", "/returns"], ["FAQ", "/faq"], ["Contact Us", "/contact"]] },
+    { title: "About", links: [["About Us", "/about"], ["Collections", "/collections"], ["Today's Gold Rate", "/gold-rate"], ["Store Locator", "/stores"], ["Privacy Policy", "/privacy"], ["Terms & Conditions", "/terms"]] },
   ];
   const subscribe = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -1,2 +1,3 @@
 import BackupPanel from "@/components/admin/BackupPanel";
-export default function Page() { return <BackupPanel />; }
+import { adminPage } from "@/lib/admin-guard";
+export default async function Page() { await adminPage("backup"); return <BackupPanel />; }

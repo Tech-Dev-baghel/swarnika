@@ -20,7 +20,7 @@ export default function BackupPanel() {
   return (
     <div>
       <h1 className="font-display text-4xl text-stone-900">Backup & Restore</h1>
-      <p className="mt-1 max-w-2xl text-sm text-stone-500">Download a copy of everything — products, rates, orders, appointments, settings — and keep it somewhere safe. Uploaded photos live in the <code>data/uploads</code> folder; back that up too.</p>
+      <p className="mt-1 max-w-2xl text-sm text-stone-500">Download a copy of your store data — products, rates, orders, pages, reviews, subscribers and settings — and keep it somewhere safe. Customer and staff passwords are never included. Uploaded photos stay in the database (Neon also keeps its own automatic backups).</p>
       <div className="mt-6 grid gap-4 md:grid-cols-2">
         <section className="rounded-xl border border-stone-200 bg-white p-6">
           <h2 className="font-display text-2xl">Download backup</h2>

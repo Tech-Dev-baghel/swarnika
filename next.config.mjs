@@ -8,6 +8,9 @@ const securityHeaders = [
 
 const nextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: ["@electric-sql/pglite", "pg"],
+  // make sure the PGlite database engine files are included when deploying
+  outputFileTracingIncludes: { "/**": ["./node_modules/@electric-sql/pglite/dist/**/*"] },
   poweredByHeader: false,
   async headers() {
     return [

@@ -21,3 +21,14 @@ body { @apply bg-ivory font-sans text-ink antialiased; }
   .shine::after { display: none; }
   html { scroll-behavior: auto; }
 }
+
+/* Editable info pages */
+.prose-jewel { color: rgb(42 29 31 / 0.85); line-height: 1.75; max-width: 70ch; }
+.prose-jewel h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 1.9rem; color: #5f1e2b; margin: 2rem 0 0.5rem; line-height: 1.2; }
+.prose-jewel h3 { font-weight: 600; margin: 1.5rem 0 0.25rem; }
+.prose-jewel p { margin: 0.75rem 0; }
+.prose-jewel ul { margin: 0.75rem 0; padding-left: 1.25rem; list-style: none; }
+.prose-jewel li { position: relative; margin: 0.35rem 0; }
+.prose-jewel li::before { content: "◆"; position: absolute; left: -1.25rem; color: #cfa45a; font-size: 0.7em; top: 0.45em; }
+.prose-jewel a { color: #7a2a38; text-decoration: underline; text-underline-offset: 3px; }
+.prose-jewel strong { color: #33101a; }

@@ -1,3 +1,4 @@
+import { currentCustomer } from "@/lib/auth";
 import { getPublicData } from "@/lib/db";
 import { DataProvider } from "@/lib/data-context";
 import { StoreProvider } from "@/lib/store";
@@ -8,10 +9,11 @@ import Overlays from "@/components/Overlays";
 export const dynamic = "force-dynamic";
 
 export default async function StoreLayout({ children }: { children: React.ReactNode }) {
-  const data = await getPublicData();
+  const [data, me] = await Promise.all([getPublicData(), currentCustomer()]);
+  const customer = me ? { id: me.id, name: me.name, wishlist: me.wishlist } : null;
   return (
     <DataProvider data={data}>
-      <StoreProvider>
+      <StoreProvider customer={customer}>
         <Header />
         <main>{children}</main>
         <Footer />

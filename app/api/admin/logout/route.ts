@@ -1,11 +1,8 @@
-import { withStore } from "@/lib/api";
 import { NextResponse } from "next/server";
-import { COOKIE } from "@/lib/auth";
+import { ADMIN_COOKIE } from "@/lib/auth";
 
-async function _POST() {
+export async function POST() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.set(COOKIE, "", { path: "/", maxAge: 0 });
+  res.cookies.set(ADMIN_COOKIE, "", { path: "/", maxAge: 0 });
   return res;
 }
-
-export const POST = withStore(_POST);

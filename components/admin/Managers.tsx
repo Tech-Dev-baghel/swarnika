@@ -30,16 +30,30 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
   const [rows, setRows] = useState(initial);
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [q, setQ] = useState("");
+  const [saved, setSaved] = useState<string | null>(null);
   const statuses: OrderStatus[] = ["new", "confirmed", "shipped", "delivered", "cancelled"];
+  const saveNotes = async (o: Order, notes: string) => {
+    if (notes === (o.notes ?? "")) return;
+    setRows((rs) => rs.map((x) => (x.id === o.id ? { ...x, notes } : x)));
+    const r = await put("orders", { id: o.id, notes });
+    if (r.ok) { setSaved(o.id); window.setTimeout(() => setSaved(null), 1500); }
+  };
   const setStatus = async (o: Order, status: OrderStatus) => {
     setRows((rs) => rs.map((x) => (x.id === o.id ? { ...x, status } : x)));
-    await put("orders", { id: o.id, status });
+    const r = await put("orders", { id: o.id, status }); if (!r.ok) setRows(initial);
   };
-  const shown = filter === "all" ? rows : rows.filter((o) => o.status === filter);
+  const ql = q.trim().toLowerCase();
+  const shown = rows.filter((o) => (filter === "all" || o.status === filter) &&
+    (!ql || [o.id, o.customer.name, o.customer.phone, o.customer.email, o.customer.city].some((v) => String(v ?? "").toLowerCase().includes(ql))));
   return (
     <div>
-      <Header title="Orders" sub="Orders placed from the website checkout. Call the customer to confirm payment, then move the status along." />
-      <div className="mt-6 flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <Header title="Orders" sub="Orders placed from the website checkout. Call the customer to confirm payment, then move the status along." />
+        <a href="/api/admin/orders" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">Export all (CSV)</a>
+      </div>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by order no., name, phone, email or city…" aria-label="Search orders" className={`${inputCls} mt-6 max-w-md`} />
+      <div className="mt-3 flex flex-wrap gap-2">
         {["all", ...statuses].map((s) => (
           <button key={s} onClick={() => setFilter(s)} className={`rounded-full px-3 py-1 text-xs capitalize ${filter === s ? "bg-stone-900 text-white" : "bg-white text-stone-600 ring-1 ring-stone-200"}`}>
             {s} {s === "all" ? `(${rows.length})` : `(${rows.filter((o) => o.status === s).length})`}
@@ -73,7 +87,11 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
                         <a href={`tel:${o.customer.phone}`} className="rounded-lg bg-stone-900 px-3 py-1.5 text-xs text-white">Call customer</a>
                         <a href={`https://wa.me/${o.customer.phone.replace(/\D/g, "").replace(/^(\d{10})$/, "91$1")}`} target="_blank" rel="noreferrer" className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs text-white">WhatsApp</a>
                         <a href={`/admin/orders/${o.id}`} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs">Invoice</a>
+                        {o.customerId && <a href={`/admin/customers/${o.customerId}`} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs">Customer account</a>}
                       </div>
+                      <label className="mt-4 block text-xs font-medium uppercase tracking-wider text-stone-500">Private notes {saved === o.id && <span className="ml-2 normal-case text-emerald-700">saved</span>}
+                        <textarea defaultValue={o.notes ?? ""} onBlur={(e) => saveNotes(o, e.target.value)} placeholder="Payment received by UPI, courier AWB no., etc." className={`${inputCls} mt-1 min-h-16 normal-case tracking-normal`} />
+                      </label>
                     </div>
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wider text-stone-500">Items</p>
@@ -99,7 +117,7 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
             </AnimatePresence>
           </div>
         ))}
-        {shown.length === 0 && <p className="rounded-xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">No orders yet. Place a test order from the website&apos;s bag to see it here.</p>}
+        {shown.length === 0 && <p className="rounded-xl border border-dashed border-stone-300 p-10 text-center text-sm text-stone-500">{rows.length ? "No orders match." : "No orders yet. Place a test order from the website\u2019s bag to see it here."}</p>}
       </div>
     </div>
   );

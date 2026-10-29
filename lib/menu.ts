@@ -56,7 +56,8 @@ export function buildMenu(cats: Category[], images: { gold?: string; diamond?: s
     { label: "Under 50K", href: "/shop?max=50000" },
     { label: "More", href: "/gold-rate", groups: [
       { title: "Invest", links: [{ label: "Today's Gold Rate", href: "/gold-rate" }, { label: "Savings Plan", href: "/#savings" }, { label: "Gold Exchange", href: "/stores" }] },
-      { title: "Services", links: [{ label: "Store Locator", href: "/stores" }, { label: "Book an Appointment", href: "/stores" }, { label: "Ring Size Guide", href: "/#guide" }, { label: "Jewellery Care", href: "/#guide" }] },
+      { title: "Services", links: [{ label: "Store Locator", href: "/stores" }, { label: "Book an Appointment", href: "/stores" }, { label: "Ring Size Guide", href: "/#guide" }, { label: "Track Order", href: "/track" }] },
+      { title: "About", links: [{ label: "About Us", href: "/about" }, { label: "Collections", href: "/collections" }, { label: "FAQ", href: "/faq" }, { label: "Contact Us", href: "/contact" }] },
     ] },
   ];
 }

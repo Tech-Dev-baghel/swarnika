@@ -1,38 +1,18 @@
-import { promises as fs } from "fs";
-import path from "path";
-import crypto from "crypto";
-import { bad, guard, json, withStore } from "@/lib/api";
-import { put } from "@vercel/blob";
-import { READONLY_MSG, UPLOAD_DIR } from "@/lib/db";
+import { bad, isResponse, json, requireAdmin, withStore } from "@/lib/api";
+import { saveMedia } from "@/lib/db";
 
-const OK: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif" };
+const OK = ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
 
+/** Photos are stored in the database (no separate file storage needed) and served from /media/<id>. */
 async function _POST(req: Request) {
-  const denied = await guard(); if (denied) return denied;
+  const me = await requireAdmin("products"); if (isResponse(me)) return me;
   const form = await req.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return bad("No file");
-  const ext = OK[file.type];
-  if (!ext) return bad("Only JPG, PNG, WEBP, GIF or AVIF images");
-  const serverless = Boolean(process.env.VERCEL);
-  const maxMb = serverless ? 4 : 8; // Vercel rejects request bodies over ~4.5 MB
-  if (file.size > maxMb * 1024 * 1024) return bad(`Image must be under ${maxMb} MB`);
-  const name = `${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}.${ext}`;
-
-  // On Vercel (or anywhere BLOB_READ_WRITE_TOKEN is set) photos go to Vercel Blob storage.
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
-    const blob = await put(`uploads/${name}`, file, { access: "public", contentType: file.type });
-    return json({ url: blob.url }, 201);
-  }
-  if (serverless) return bad("Photo uploads need Vercel Blob storage. In Vercel open Storage → create a Blob store → connect it to this project, then redeploy. (You can paste an image link instead.)", 503);
-
-  try {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
-    await fs.writeFile(path.join(UPLOAD_DIR, name), Buffer.from(await file.arrayBuffer()));
-  } catch {
-    return bad(READONLY_MSG, 503);
-  }
-  return json({ url: `/media/${name}` }, 201);
+  if (!OK.includes(file.type)) return bad("Only JPG, PNG, WEBP, GIF or AVIF images");
+  const max = process.env.VERCEL ? 4 : 8; // Vercel rejects uploads over ~4.5 MB
+  if (file.size > max * 1024 * 1024) return bad(`Image must be under ${max} MB (tip: export photos at 1600px wide).`);
+  const id = await saveMedia(file.type, Buffer.from(await file.arrayBuffer()));
+  return json({ url: `/media/${id}` }, 201);
 }
-
 export const POST = withStore(_POST);

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { getPublicData } from "@/lib/db";
+import ProductReviews from "@/components/ProductReviews";
+import { approvedReviews, getPublicData } from "@/lib/db";
 import { img, priceOf } from "@/lib/pricing";
 import { SITE_URL } from "@/lib/site";
 import ProductClient from "./ProductClient";
@@ -28,6 +29,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ld).replace(/</g, "\\u003c") }} />
       <ProductClient id={id} />
+      <div className="mx-auto max-w-7xl px-4"><ProductReviews productId={id} reviews={await approvedReviews(id)} /></div>
     </>
   );
 }

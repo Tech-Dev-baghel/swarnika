@@ -44,3 +44,16 @@ export function appointmentEmail(a: Appointment, shopEmail: string) {
   void send(process.env.NOTIFY_EMAIL || shopEmail, `New ${a.type === "video" ? "video call" : "store visit"} request — ${a.name}`,
     `<p>${esc(a.name)} · ${esc(a.phone)}<br>Store: ${esc(a.store)}<br>Preferred time: ${esc(a.date || "Any time")}</p>`);
 }
+
+export function resetEmail(to: string, brand: string, link: string, name: string) {
+  return send(to, `${brand}: reset your password`,
+    `<p>Hi ${esc(name)},</p><p>Click the link below to set a new password. It works for 1 hour.</p><p><a href="${link}">${link}</a></p><p>If you didn't ask for this, you can ignore this email.</p>`);
+}
+export function welcomeEmail(to: string, brand: string, name: string) {
+  void send(to, `Welcome to ${brand}`, `<p>Hi ${esc(name)},</p><p>Your ${esc(brand)} account is ready. You can track orders, save addresses and keep a wishlist.</p>`);
+}
+export function messageAlert(shopEmail: string, m: { name: string; email: string; phone: string; subject: string; body: string }) {
+  void send(process.env.NOTIFY_EMAIL || shopEmail, `New message: ${m.subject || "Contact form"}`,
+    `<p><b>${esc(m.name)}</b> · ${esc(m.email)} · ${esc(m.phone)}</p><p>${esc(m.body).replace(/\n/g, "<br>")}</p>`);
+}
+export const mailEnabled = enabled;

@@ -1,3 +1,4 @@
 import { SubscribersManager } from "@/components/admin/Managers";
-import { getDB } from "@/lib/db";
-export default async function Page() { return <SubscribersManager initial={(await getDB()).subscribers} />; }
+import { adminPage } from "@/lib/admin-guard";
+import { listSubscribers } from "@/lib/db";
+export default async function Page() { await adminPage("marketing"); return <SubscribersManager initial={await listSubscribers()} />; }

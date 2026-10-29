@@ -1,7 +1,9 @@
-import ResourceManager from "@/components/admin/ResourceManager";
-import { getDB } from "@/lib/db";
-
+import { ReviewsManager } from "@/components/admin/More";
+import { adminPage } from "@/lib/admin-guard";
+import { listItems, listReviews } from "@/lib/db";
+import type { Product } from "@/lib/types";
 export default async function Page() {
-  const db = await getDB();
-  return <ResourceManager kind="testimonials" initial={db.testimonials as never} extra={{ categories: db.categories, rates: db.rates }} />;
+  await adminPage("reviews");
+  const products = await listItems<Product>("products");
+  return <ReviewsManager initial={await listReviews()} names={Object.fromEntries(products.map((p) => [p.id, p.name]))} />;
 }

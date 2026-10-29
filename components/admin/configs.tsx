@@ -33,7 +33,7 @@ const Badge = ({ on, yes = "Active", no = "Hidden" }: { on: unknown; yes?: strin
 
 export const CONFIGS: Record<string, Config> = {
   products: {
-    title: "Products", singular: "product", resource: "products",
+    title: "Products", singular: "product", resource: "items/products",
     description: "Every design in the store. Price is calculated live from weight × today's gold rate + making % + stone value + 3% GST.",
     search: ["name", "id", "collection", "category"],
     fields: (x) => [
@@ -67,7 +67,7 @@ export const CONFIGS: Record<string, Config> = {
     ],
   },
   categories: {
-    title: "Categories", singular: "category", resource: "categories", sortable: true,
+    title: "Categories", singular: "category", resource: "items/categories", sortable: true,
     description: "The circles under “Shop by Category” and the category filter. The slug is used in links (e.g. /shop?category=ring).",
     search: ["label", "slug"],
     fields: () => [
@@ -85,7 +85,7 @@ export const CONFIGS: Record<string, Config> = {
     ],
   },
   slides: {
-    title: "Homepage Banners", singular: "banner", resource: "slides", sortable: true,
+    title: "Homepage Banners", singular: "banner", resource: "items/slides", sortable: true,
     description: "The large rotating slides at the top of the homepage.",
     search: ["title", "eyebrow"],
     fields: () => [
@@ -106,7 +106,7 @@ export const CONFIGS: Record<string, Config> = {
     ],
   },
   collections: {
-    title: "Collections", singular: "collection", resource: "collections", sortable: true,
+    title: "Collections", singular: "collection", resource: "items/collections", sortable: true,
     description: "Signature collection tiles. Products whose “Collection” matches the name appear when a tile is clicked.",
     search: ["name"],
     fields: () => [
@@ -123,7 +123,7 @@ export const CONFIGS: Record<string, Config> = {
     ],
   },
   brides: {
-    title: "Regional Brides", singular: "bride", resource: "brides", sortable: true,
+    title: "Regional Brides", singular: "bride", resource: "items/brides", sortable: true,
     description: "Tiles in the “Brides of Every Region” section.",
     search: ["name"],
     fields: () => [
@@ -139,7 +139,7 @@ export const CONFIGS: Record<string, Config> = {
     ],
   },
   stores: {
-    title: "Stores", singular: "store", resource: "stores",
+    title: "Stores", singular: "store", resource: "items/stores",
     description: "Showrooms listed in the store finder. Customers can request visits and video calls for each.",
     search: ["name", "city", "address"],
     fields: () => [
@@ -157,8 +157,8 @@ export const CONFIGS: Record<string, Config> = {
     ],
   },
   testimonials: {
-    title: "Customer Reviews", singular: "review", resource: "testimonials",
-    description: "Reviews shown in “Stories from Our Family” on the homepage.",
+    title: "Homepage Testimonials", singular: "testimonial", resource: "items/testimonials",
+    description: "Hand-picked quotes shown in “Stories from Our Family” on the homepage. (Reviews customers write on products are under Product Reviews.)",
     search: ["name", "text", "city"],
     fields: () => [
       { key: "name", label: "Customer name", type: "text", required: true },
@@ -175,7 +175,7 @@ export const CONFIGS: Record<string, Config> = {
     ],
   },
   coupons: {
-    title: "Coupons", singular: "coupon", resource: "coupons",
+    title: "Coupons", singular: "coupon", resource: "items/coupons",
     description: "Discount codes customers can enter in the bag.",
     search: ["code"],
     fields: () => [

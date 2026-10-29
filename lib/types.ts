@@ -73,6 +73,8 @@ export type OrderStatus = "new" | "confirmed" | "shipped" | "delivered" | "cance
 export type Order = {
   id: string;
   createdAt: string;
+  customerId?: string | null;
+  notes?: string;
   customer: { name: string; phone: string; email: string; address: string; city: string; pincode: string };
   items: { id: string; name: string; qty: number; size?: string; price: number; image?: string }[];
   subtotal: number;
@@ -85,8 +87,20 @@ export type Appointment = {
   id: string; createdAt: string; store: string; type: "visit" | "video";
   name: string; phone: string; date: string; status: "pending" | "confirmed" | "done" | "cancelled";
 };
+export type Address = { id: string; label: string; name: string; phone: string; address: string; city: string; pincode: string; isDefault?: boolean };
+export type Customer = {
+  id: string; name: string; email: string | null; phone: string | null; addresses: Address[]; wishlist: string[];
+  active: boolean; createdAt: string; lastLogin: string | null;
+};
+export type Role = "owner" | "manager" | "staff";
+export type AdminUser = { id: string; name: string; email: string; role: Role; active: boolean; createdAt: string; lastLogin: string | null };
+export type Review = { id: string; createdAt: string; productId: string; customerId: string | null; name: string; rating: number; title: string; body: string; status: "pending" | "approved" | "rejected" };
+export type Message = { id: string; createdAt: string; name: string; email: string; phone: string; subject: string; body: string; status: "new" | "read" | "replied" | "closed" };
+export type Page = { slug: string; title: string; body: string; updatedAt: string };
+export type AuditEntry = { id: string; createdAt: string; actor: string; action: string; detail: string };
 export type Subscriber = { id: string; email: string; createdAt: string };
 
+/** Shape of a full backup file. */
 export type DB = {
   settings: Settings;
   rates: Rate[];
@@ -101,6 +115,9 @@ export type DB = {
   orders: Order[];
   appointments: Appointment[];
   subscribers: Subscriber[];
+  pages?: Page[];
+  reviews?: Review[];
+  messages?: Message[];
 };
 
 /** The subset of the database the storefront needs (no orders / customer data). */
