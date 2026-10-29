@@ -1,0 +1,34 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+html { scroll-behavior: smooth; }
+body { @apply bg-ivory font-sans text-ink antialiased; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+.motif { background-image: radial-gradient(circle at 1px 1px, rgba(207,164,90,.22) 1px, transparent 0); background-size: 18px 18px; }
+
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee 40s linear infinite; }
+@keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.skeleton { background: linear-gradient(90deg, #f3e6cf 0%, #fbf7f1 50%, #f3e6cf 100%); background-size: 800px 100%; animation: shimmer 1.4s infinite linear; }
+.shine { position: relative; overflow: hidden; }
+.shine::after { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.35) 50%, transparent 60%); transform: translateX(-120%); transition: transform .9s ease; pointer-events: none; }
+.shine:hover::after { transform: translateX(120%); }
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee, .skeleton { animation: none; }
+  .shine::after { display: none; }
+  html { scroll-behavior: auto; }
+}
+
+/* Editable info pages */
+.prose-jewel { color: rgb(42 29 31 / 0.85); line-height: 1.75; max-width: 70ch; }
+.prose-jewel h2 { font-family: "Cormorant Garamond", Georgia, serif; font-size: 1.9rem; color: #5f1e2b; margin: 2rem 0 0.5rem; line-height: 1.2; }
+.prose-jewel h3 { font-weight: 600; margin: 1.5rem 0 0.25rem; }
+.prose-jewel p { margin: 0.75rem 0; }
+.prose-jewel ul { margin: 0.75rem 0; padding-left: 1.25rem; list-style: none; }
+.prose-jewel li { position: relative; margin: 0.35rem 0; }
+.prose-jewel li::before { content: "◆"; position: absolute; left: -1.25rem; color: #cfa45a; font-size: 0.7em; top: 0.45em; }
+.prose-jewel a { color: #7a2a38; text-decoration: underline; text-underline-offset: 3px; }
+.prose-jewel strong { color: #33101a; }
