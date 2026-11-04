@@ -50,6 +50,7 @@ export const CONFIGS: Record<string, Config> = {
       { key: "occasion", label: "Occasion", type: "select", required: true, options: opts(OCCASIONS) },
       { key: "gender", label: "For", type: "select", required: true, options: opts(GENDERS) },
       { key: "stock", label: "Stock (pieces)", type: "number", min: 0 },
+      { key: "hsn", label: "HSN code (blank = default)", type: "text", placeholder: "7113" },
       { key: "active", label: "Show on website", type: "checkbox" },
       { key: "tags", label: "Badges", type: "multi", options: opts(TAGS, { new: "New", bestseller: "Bestseller", trending: "Trending" }), wide: true },
       { key: "rating", label: "Rating (0–5)", type: "number", step: 0.1, min: 0 },

@@ -39,6 +39,8 @@ export type Product = {
   description: string;
   stock: number;
   active: boolean;
+  /** GST HSN code; empty = the default from Settings. */
+  hsn?: string;
 };
 
 export type Category = { id: string; slug: string; label: string; image: string; order: number };
@@ -67,27 +69,67 @@ export type Settings = {
   savingsBonusPct: number;
   marquee: string;
   storeImage: string;
+  // ---- GST invoice
+  legalName: string;
+  gstin: string;
+  gstState: string;
+  hsnDefault: string;
+  invoicePrefix: string;
+  // ---- checkout rules
+  codEnabled: boolean;
+  codMaxAmount: number;
+  codFee: number;
+  codBlockedPincodes: string;
+  shippingFee: number;
+  freeShippingAbove: number;
+  deliveryDays: string;
+  // ---- DTDC pickup (sender) address
+  pickupName: string;
+  pickupPhone: string;
+  pickupAddress: string;
+  pickupCity: string;
+  pickupState: string;
+  pickupPincode: string;
 };
 
 export type OrderStatus = "new" | "confirmed" | "shipped" | "delivered" | "cancelled";
+export type PaymentMethod = "cod" | "online";
+/** cod = collect on delivery · pending = waiting for online payment · expired = never paid (auto-cancelled) */
+export type PaymentStatus = "cod" | "pending" | "paid" | "expired" | "refunded";
+export type Payment = { gateway?: "razorpay"; rzpOrderId?: string; paymentId?: string; method?: string; paidAt?: string; lastError?: string; refundId?: string; refundedAt?: string; refundAmount?: number };
+export type TrackEvent = { at: string; status: string; location?: string; remarks?: string };
+export type Shipment = {
+  carrier: "dtdc" | "other"; carrierName?: string; awb: string; createdAt: string; status: string;
+  weightKg?: number; codAmount?: number; events: TrackEvent[]; checkedAt?: string; cancelled?: boolean;
+};
+export type GstInfo = { rate: number; sellerState: string; buyerState: string; intra: boolean; taxable: number; cgst: number; sgst: number; igst: number };
 export type Order = {
   id: string;
   createdAt: string;
   customerId?: string | null;
   notes?: string;
-  customer: { name: string; phone: string; email: string; address: string; city: string; pincode: string };
+  customer: { name: string; phone: string; email: string; address: string; city: string; pincode: string; state?: string; gstin?: string };
   items: { id: string; name: string; qty: number; size?: string; price: number; image?: string }[];
   subtotal: number;
   discount: number;
   coupon?: string;
   total: number;
   status: OrderStatus;
+  shippingFee?: number;
+  codFee?: number;
+  paymentMethod?: PaymentMethod;
+  paymentStatus?: PaymentStatus;
+  payment?: Payment;
+  shipment?: Shipment | null;
+  invoiceNo?: string | null;
+  invoiceDate?: string | null;
+  gst?: GstInfo | null;
 };
 export type Appointment = {
   id: string; createdAt: string; store: string; type: "visit" | "video";
   name: string; phone: string; date: string; status: "pending" | "confirmed" | "done" | "cancelled";
 };
-export type Address = { id: string; label: string; name: string; phone: string; address: string; city: string; pincode: string; isDefault?: boolean };
+export type Address = { id: string; label: string; name: string; phone: string; address: string; city: string; pincode: string; state?: string; isDefault?: boolean };
 export type Customer = {
   id: string; name: string; email: string | null; phone: string | null; addresses: Address[]; wishlist: string[];
   active: boolean; createdAt: string; lastLogin: string | null;
@@ -123,4 +165,6 @@ export type DB = {
 /** The subset of the database the storefront needs (no orders / customer data). */
 export type PublicData = Pick<DB, "settings" | "rates" | "categories" | "slides" | "collections" | "brides" | "stores" | "testimonials"> & {
   products: Product[];
+  /** Which integrations are switched on (keys are set on the server). */
+  features?: { online: boolean; dtdc: boolean };
 };

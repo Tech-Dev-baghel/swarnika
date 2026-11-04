@@ -1,7 +1,9 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { can, currentAdmin, currentCustomer, type Section } from "./auth";
-import { StorageError } from "./db";
+import { CheckoutError, StorageError } from "./db";
+import { DtdcError } from "./dtdc";
+import { RazorpayError } from "./razorpay";
 import type { AdminUser, Customer } from "./types";
 
 export const json = (data: unknown, status = 200) => NextResponse.json(data, { status });
@@ -24,6 +26,8 @@ export function withStore<A extends unknown[]>(fn: (...a: A) => Promise<Response
   return async (...a: A) => {
     try { return await fn(...a); } catch (e) {
       if (e instanceof StorageError) return bad(e.message, 503);
+      if (e instanceof CheckoutError) return bad(e.message, 400);
+      if (e instanceof DtdcError || e instanceof RazorpayError) return bad(e.message, 502);
       const code = (e as { code?: string }).code;
       if (code === "23505") return bad("That already exists (duplicate email, phone or code).", 409);
       console.error(e);

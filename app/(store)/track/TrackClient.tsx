@@ -3,10 +3,15 @@
 import { motion } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
+import { PayNow, PaymentPill, ShipmentBox } from "@/components/OrderExtras";
 import Photo from "@/components/Photo";
+import type { PaymentMethod, PaymentStatus, TrackEvent } from "@/lib/types";
 import { inr } from "@/lib/pricing";
 
-type Result = { id: string; createdAt: string; status: string; total: number; city: string; items: { name: string; qty: number; image?: string }[] };
+type Result = {
+  id: string; createdAt: string; status: string; total: number; city: string; items: { name: string; qty: number; image?: string }[];
+  paymentMethod?: PaymentMethod; paymentStatus?: PaymentStatus; shipment?: { carrier: string; awb: string; status: string; events: TrackEvent[] } | null;
+};
 const STEPS = ["new", "confirmed", "shipped", "delivered"];
 const LABEL: Record<string, string> = { new: "Order placed", confirmed: "Confirmed", shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled" };
 
@@ -43,6 +48,8 @@ export default function TrackClient() {
             <p className="font-mono text-sm">{res.id}</p>
             <p className="text-sm text-ink/60">{new Date(res.createdAt).toLocaleDateString("en-IN", { dateStyle: "medium" })} · {inr(res.total)}</p>
           </div>
+          <div className="mt-3 flex items-center gap-2 text-sm"><span className="text-ink/60">Payment:</span><PaymentPill method={res.paymentMethod} status={res.paymentStatus} /></div>
+          {res.paymentMethod === "online" && res.paymentStatus === "pending" && res.status === "new" && <div className="mt-4"><PayNow orderId={res.id} phone={phone} total={res.total} onPaid={() => setRes({ ...res, paymentStatus: "paid", status: "confirmed" })} /></div>}
           {res.status === "cancelled" ? (
             <p className="mt-6 rounded-xl bg-wine-50 p-4 text-sm text-wine-800">This order was cancelled. Please contact us if this is unexpected.</p>
           ) : (
@@ -55,6 +62,7 @@ export default function TrackClient() {
               ))}
             </ol>
           )}
+          {res.shipment && <div className="mt-6"><ShipmentBox {...res.shipment} /></div>}
           <ul className="mt-6 space-y-3">
             {res.items.map((i) => (
               <li key={i.name} className="flex items-center gap-3 text-sm">

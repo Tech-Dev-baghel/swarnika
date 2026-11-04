@@ -115,7 +115,20 @@ export default function ProductClient({ id }: { id: string }) {
           </div>
           <button onClick={() => setStoreOpen(true)} className="mt-3 flex items-center gap-2 text-sm text-wine-700 hover:underline"><VideoIcon className="h-4 w-4" />See it live on a video call</button>
 
-          <form onSubmit={(e) => { e.preventDefault(); setEta(/^\d{6}$/.test(pin) ? `Usually delivered in 3–7 days to ${pin} · Free insured shipping` : "Please enter a valid 6-digit pincode"); }} className="mt-6 flex overflow-hidden rounded-full border border-wine-100 bg-white">
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (!/^\d{6}$/.test(pin)) { setEta("Please enter a valid 6-digit pincode"); return; }
+            setEta("Checking…");
+            try {
+              const r = await fetch(`/api/pincode?pin=${pin}`); const j = await r.json();
+              if (!r.ok) { setEta(j.error ?? "Couldn't check right now — please try again."); return; }
+              if (!j.valid) { setEta("That pincode doesn't exist. Please check it."); return; }
+              if (j.deliverable === false) { setEta(`Sorry, we don't deliver to ${pin} yet — call us and we'll arrange it.`); return; }
+              const where = j.city ? `${j.city}${j.state ? ", " + j.state : ""}` : pin;
+              const codTxt = j.cod === false ? " · Prepaid only (no cash on delivery)" : j.codMaxAmount > 0 ? ` · Cash on delivery up to ₹${Number(j.codMaxAmount).toLocaleString("en-IN")}` : " · Cash on delivery available";
+              setEta(`Delivers to ${where} in ${j.days || "3–7 working days"} · Insured shipping${codTxt}`);
+            } catch { setEta("Couldn't check right now — please try again."); }
+          }} className="mt-6 flex overflow-hidden rounded-full border border-wine-100 bg-white">
             <input value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="Enter pincode for delivery date" aria-label="Pincode" className="w-full bg-transparent px-5 py-3 text-sm outline-none" />
             <button className="px-5 text-sm font-medium text-wine-700">Check</button>
           </form>

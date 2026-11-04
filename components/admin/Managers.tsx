@@ -5,6 +5,8 @@ import { useState } from "react";
 import { img, inr } from "@/lib/pricing";
 import type { Appointment, Order, OrderStatus, Rate, Settings, Subscriber } from "@/lib/types";
 import { FieldInput, inputCls, type FieldDef } from "./fields";
+import { OrderOps, PayBadge } from "./OrderOps";
+import { STATES } from "@/lib/india";
 
 const put = (resource: string, body: unknown) =>
   fetch(`/api/admin/${resource}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -26,7 +28,7 @@ function Header({ title, sub }: { title: string; sub: string }) {
   );
 }
 
-export function OrdersManager({ initial }: { initial: Order[] }) {
+export function OrdersManager({ initial, dtdc = false, canRefund = false }: { initial: Order[]; dtdc?: boolean; canRefund?: boolean }) {
   const [rows, setRows] = useState(initial);
   const [open, setOpen] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
@@ -41,17 +43,21 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
   };
   const setStatus = async (o: Order, status: OrderStatus) => {
     setRows((rs) => rs.map((x) => (x.id === o.id ? { ...x, status } : x)));
-    const r = await put("orders", { id: o.id, status }); if (!r.ok) setRows(initial);
+    const r = await put("orders", { id: o.id, status });
+    if (!r.ok) { setRows((rs) => rs.map((x) => (x.id === o.id ? o : x))); const j = await r.json().catch(() => ({})); alertMsg(j.error ?? "Couldn't change the status"); return; }
+    const n = (await r.json()) as Order; setRows((rs) => rs.map((x) => (x.id === n.id ? n : x)));
   };
+  const [notice, alertMsg] = useState("");
   const ql = q.trim().toLowerCase();
   const shown = rows.filter((o) => (filter === "all" || o.status === filter) &&
     (!ql || [o.id, o.customer.name, o.customer.phone, o.customer.email, o.customer.city].some((v) => String(v ?? "").toLowerCase().includes(ql))));
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <Header title="Orders" sub="Orders placed from the website checkout. Call the customer to confirm payment, then move the status along." />
+        <Header title="Orders" sub="Online orders are confirmed automatically when paid. For cash on delivery, call the customer to confirm, then book the courier." />
         <a href="/api/admin/orders" className="rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm">Export all (CSV)</a>
       </div>
+      {notice && <p className="mt-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700" role="alert">{notice} <button onClick={() => alertMsg("")} className="ml-2 underline">OK</button></p>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by order no., name, phone, email or city…" aria-label="Search orders" className={`${inputCls} mt-6 max-w-md`} />
       <div className="mt-3 flex flex-wrap gap-2">
         {["all", ...statuses].map((s) => (
@@ -68,6 +74,7 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
               <span className="text-sm text-stone-600">{o.customer.name} · {o.customer.city}</span>
               <span className="text-xs text-stone-400">{when(o.createdAt)}</span>
               <span className="ml-auto font-medium">{inr(o.total)}</span>
+              <PayBadge o={o} />
               <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${STATUS_STYLE[o.status]}`}>{o.status}</span>
             </button>
             <AnimatePresence initial={false}>
@@ -76,7 +83,7 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
                   <div className="grid gap-6 p-4 md:grid-cols-2">
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wider text-stone-500">Customer</p>
-                      <p className="mt-1 text-sm">{o.customer.name}<br />{o.customer.phone}{o.customer.email && <> · {o.customer.email}</>}<br />{o.customer.address}, {o.customer.city} – {o.customer.pincode}</p>
+                      <p className="mt-1 text-sm">{o.customer.name}<br />{o.customer.phone}{o.customer.email && <> · {o.customer.email}</>}<br />{o.customer.address}, {o.customer.city}{o.customer.state ? `, ${o.customer.state}` : ""} – {o.customer.pincode}{o.customer.gstin && <><br />GSTIN {o.customer.gstin}</>}</p>
                       <div className="mt-4 flex flex-wrap items-center gap-2">
                         <span className="text-xs font-medium uppercase tracking-wider text-stone-500">Status</span>
                         {statuses.map((s) => (
@@ -86,7 +93,7 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
                       <div className="mt-4 flex flex-wrap gap-2">
                         <a href={`tel:${o.customer.phone}`} className="rounded-lg bg-stone-900 px-3 py-1.5 text-xs text-white">Call customer</a>
                         <a href={`https://wa.me/${o.customer.phone.replace(/\D/g, "").replace(/^(\d{10})$/, "91$1")}`} target="_blank" rel="noreferrer" className="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs text-white">WhatsApp</a>
-                        <a href={`/admin/orders/${o.id}`} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs">Invoice</a>
+                        <a href={`/admin/orders/${o.id}`} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs">{o.invoiceNo ? `Invoice ${o.invoiceNo}` : "Invoice"}</a>
                         {o.customerId && <a href={`/admin/customers/${o.customerId}`} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs">Customer account</a>}
                       </div>
                       <label className="mt-4 block text-xs font-medium uppercase tracking-wider text-stone-500">Private notes {saved === o.id && <span className="ml-2 normal-case text-emerald-700">saved</span>}
@@ -108,9 +115,12 @@ export function OrdersManager({ initial }: { initial: Order[] }) {
                       <dl className="mt-3 space-y-1 border-t border-stone-100 pt-2 text-sm">
                         <div className="flex justify-between"><dt className="text-stone-500">Subtotal</dt><dd>{inr(o.subtotal)}</dd></div>
                         {o.discount > 0 && <div className="flex justify-between text-emerald-700"><dt>Discount {o.coupon}</dt><dd>−{inr(o.discount)}</dd></div>}
+                        {!!o.shippingFee && <div className="flex justify-between"><dt className="text-stone-500">Shipping</dt><dd>{inr(o.shippingFee)}</dd></div>}
+                        {!!o.codFee && <div className="flex justify-between"><dt className="text-stone-500">COD fee</dt><dd>{inr(o.codFee)}</dd></div>}
                         <div className="flex justify-between font-semibold"><dt>Total</dt><dd>{inr(o.total)}</dd></div>
                       </dl>
                     </div>
+                    <OrderOps o={o} dtdc={dtdc} canRefund={canRefund} onChange={(n) => setRows((rs) => rs.map((x) => (x.id === n.id ? n : x)))} />
                   </div>
                 </motion.div>
               )}
@@ -205,7 +215,52 @@ const SETTINGS_FIELDS: FieldDef[] = [
   { key: "storeImage", label: "Store / experience photo", type: "image", wide: true },
 ];
 
-export function SettingsForm({ initial }: { initial: { settings: Settings; rates: Rate[] } }) {
+const STATE_OPTS = STATES.map((x) => ({ value: x.name, label: x.name }));
+const GST_FIELDS: FieldDef[] = [
+  { key: "legalName", label: "Registered business name (on invoice)", type: "text" },
+  { key: "gstin", label: "Your GSTIN", type: "text", placeholder: "27ABCDE1234F1Z5" },
+  { key: "gstState", label: "State of registration", type: "select", options: STATE_OPTS, help: "Same state as the customer → CGST + SGST, other states → IGST." },
+  { key: "hsnDefault", label: "Default HSN code", type: "text", help: "7113 = jewellery of precious metal. Ask your CA; products can override it." },
+  { key: "invoicePrefix", label: "Invoice number prefix", type: "text", help: "Invoices are numbered PREFIX/26-27/0001 per financial year." },
+];
+const CHECKOUT_FIELDS: FieldDef[] = [
+  { key: "codEnabled", label: "Allow cash on delivery", type: "checkbox" },
+  { key: "codMaxAmount", label: "Cash on delivery only up to (₹, 0 = no limit)", type: "number", min: 0 },
+  { key: "codFee", label: "Extra fee for cash on delivery (₹)", type: "number", min: 0 },
+  { key: "codBlockedPincodes", label: "No COD for these pincodes (comma separated)", type: "textarea", wide: true },
+  { key: "shippingFee", label: "Shipping charge (₹, 0 = free)", type: "number", min: 0 },
+  { key: "freeShippingAbove", label: "Free shipping above (₹, 0 = never)", type: "number", min: 0 },
+  { key: "deliveryDays", label: "Delivery time shown to customers", type: "text", placeholder: "3–7 working days" },
+];
+const PICKUP_FIELDS: FieldDef[] = [
+  { key: "pickupName", label: "Sender name", type: "text" },
+  { key: "pickupPhone", label: "Pickup phone (10 digits)", type: "text" },
+  { key: "pickupAddress", label: "Pickup address", type: "textarea", wide: true },
+  { key: "pickupCity", label: "City", type: "text" },
+  { key: "pickupState", label: "State", type: "select", options: STATE_OPTS },
+  { key: "pickupPincode", label: "Pincode", type: "text" },
+];
+export type Integrations = { online: boolean; testMode: boolean; webhook: boolean; dtdc: boolean; tracking: boolean; staging: boolean; siteUrl: string };
+
+function FieldGrid({ fields, s, setS }: { fields: FieldDef[]; s: Settings; setS: (s: Settings) => void }) {
+  return (
+    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      {fields.map((f) => (
+        <label key={f.key} className={`block ${f.wide || f.type === "image" || f.type === "textarea" ? "sm:col-span-2" : ""}`}>
+          <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-stone-500">{f.label}</span>
+          <FieldInput f={f} value={(s as unknown as Record<string, unknown>)[f.key]} onChange={(v) => setS({ ...s, [f.key]: v })} />
+          {"help" in f && f.help && <span className="mt-1 block text-xs text-stone-400">{f.help}</span>}
+        </label>
+      ))}
+    </div>
+  );
+}
+
+const Dot = ({ on, label, off }: { on: boolean; label: string; off: string }) => (
+  <li className="flex items-start gap-2"><span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${on ? "bg-emerald-500" : "bg-stone-300"}`} /><span>{on ? label : off}</span></li>
+);
+
+export function SettingsForm({ initial, integrations }: { initial: { settings: Settings; rates: Rate[] }; integrations?: Integrations }) {
   const [s, setS] = useState<Settings>(initial.settings);
   const [rates, setRates] = useState<Rate[]>(initial.rates);
   const [state, setState] = useState<"idle" | "busy" | "saved">("idle");
@@ -251,16 +306,38 @@ export function SettingsForm({ initial }: { initial: { settings: Settings; rates
         </div>
       </section>
 
+      {integrations && (
+        <section className="rounded-xl border border-stone-200 bg-white p-6">
+          <h2 className="font-display text-2xl">Payments & courier connections</h2>
+          <p className="mt-1 text-sm text-stone-500">Keys are added in Vercel → Settings → Environment Variables (never here), then redeploy. See README for the step-by-step.</p>
+          <ul className="mt-4 space-y-2 text-sm">
+            <Dot on={integrations.online} label={`Razorpay connected${integrations.testMode ? " — TEST mode (no real money)" : " — LIVE"}`} off="Razorpay not connected — customers can only use cash on delivery. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET." />
+            {integrations.online && <Dot on={integrations.webhook} label={`Razorpay webhook secret set. Webhook URL: ${integrations.siteUrl}/api/payments/razorpay/webhook`} off={`Razorpay webhook not set (recommended). Add RAZORPAY_WEBHOOK_SECRET and create a webhook for ${integrations.siteUrl}/api/payments/razorpay/webhook`} />}
+            <Dot on={integrations.dtdc} label={`DTDC booking connected${integrations.staging ? " — DTDC TEST server" : ""}`} off="DTDC not connected — add DTDC_API_KEY and DTDC_CUSTOMER_CODE (from your DTDC account manager). You can still enter tracking numbers by hand." />
+            <Dot on={integrations.tracking} label="DTDC live tracking connected" off="DTDC tracking not connected — add DTDC_TRACK_USERNAME and DTDC_TRACK_PASSWORD." />
+          </ul>
+        </section>
+      )}
+
+      <section className="rounded-xl border border-stone-200 bg-white p-6">
+        <h2 className="font-display text-2xl">Checkout: cash on delivery & shipping</h2>
+        <FieldGrid fields={CHECKOUT_FIELDS} s={s} setS={setS} />
+      </section>
+
+      <section className="rounded-xl border border-stone-200 bg-white p-6">
+        <h2 className="font-display text-2xl">GST invoice</h2>
+        <FieldGrid fields={GST_FIELDS} s={s} setS={setS} />
+      </section>
+
+      <section className="rounded-xl border border-stone-200 bg-white p-6">
+        <h2 className="font-display text-2xl">Courier pickup address</h2>
+        <p className="mt-1 text-sm text-stone-500">Where DTDC collects parcels from. Printed as the sender on labels.</p>
+        <FieldGrid fields={PICKUP_FIELDS} s={s} setS={setS} />
+      </section>
+
       <section className="rounded-xl border border-stone-200 bg-white p-6">
         <h2 className="font-display text-2xl">Store details & homepage</h2>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {SETTINGS_FIELDS.map((f) => (
-            <label key={f.key} className={`block ${f.wide || f.type === "image" || f.type === "textarea" ? "sm:col-span-2" : ""}`}>
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wider text-stone-500">{f.label}</span>
-              <FieldInput f={f} value={(s as unknown as Record<string, unknown>)[f.key]} onChange={(v) => setS({ ...s, [f.key]: v })} />
-            </label>
-          ))}
-        </div>
+        <FieldGrid fields={SETTINGS_FIELDS} s={s} setS={setS} />
       </section>
     </form>
   );

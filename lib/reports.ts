@@ -32,30 +32,30 @@ export async function salesReport(r: Range) {
   const W = `(created_at at time zone '${TZ}')::date between $1::date and $2::date`;
   const P = [r.from, r.to];
   const [kpi] = await q<{ orders: number; revenue: number; cancelled: number; discount: number; customers: number }>(
-    `select count(*) filter (where status <> 'cancelled')::int as orders,
-            coalesce(sum(total) filter (where status <> 'cancelled'), 0)::int as revenue,
-            count(*) filter (where status = 'cancelled')::int as cancelled,
-            coalesce(sum(discount) filter (where status <> 'cancelled'), 0)::int as discount,
-            count(distinct coalesce(customer_id, customer->>'phone')) filter (where status <> 'cancelled')::int as customers
+    `select count(*) filter (where status <> 'cancelled' and payment_status <> 'pending')::int as orders,
+            coalesce(sum(total) filter (where status <> 'cancelled' and payment_status <> 'pending'), 0)::int as revenue,
+            count(*) filter (where status = 'cancelled' and payment_status <> 'expired')::int as cancelled,
+            coalesce(sum(discount) filter (where status <> 'cancelled' and payment_status <> 'pending'), 0)::int as discount,
+            count(distinct coalesce(customer_id, customer->>'phone')) filter (where status <> 'cancelled' and payment_status <> 'pending')::int as customers
      from orders where ${W}`, P);
   const [newCust] = await q<{ n: number }>(`select count(*)::int as n from customers where ${W}`, P);
   const daily = await q<{ day: string; orders: number; revenue: number }>(
     `select to_char(d, 'YYYY-MM-DD') as day, coalesce(o.orders, 0)::int as orders, coalesce(o.revenue, 0)::int as revenue
      from generate_series($1::date, $2::date, interval '1 day') d
      left join (select (created_at at time zone '${TZ}')::date as day, count(*) orders, sum(total) revenue from orders
-                where status <> 'cancelled' and ${W} group by 1) o on o.day = d::date order by d`, P);
+                where status <> 'cancelled' and payment_status <> 'pending' and ${W} group by 1) o on o.day = d::date order by d`, P);
   const byStatus = await q<{ status: string; n: number; total: number }>(`select status, count(*)::int as n, coalesce(sum(total),0)::int as total from orders where ${W} group by status order by n desc`, P);
   const lines = await q<{ id: string; name: string; qty: number; revenue: number }>(
     `select li->>'id' as id, max(li->>'name') as name, sum((li->>'qty')::int)::int as qty, sum((li->>'qty')::int * (li->>'price')::int)::int as revenue
-     from orders, jsonb_array_elements(items) li where status <> 'cancelled' and ${W} group by 1 order by revenue desc`, P);
+     from orders, jsonb_array_elements(items) li where status <> 'cancelled' and payment_status <> 'pending' and ${W} group by 1 order by revenue desc`, P);
   const byCity = await q<{ city: string; orders: number; revenue: number }>(
     `select initcap(trim(coalesce(nullif(customer->>'city',''), 'Unknown'))) as city, count(*)::int as orders, sum(total)::int as revenue
-     from orders where status <> 'cancelled' and ${W} group by 1 order by revenue desc limit 10`, P);
+     from orders where status <> 'cancelled' and payment_status <> 'pending' and ${W} group by 1 order by revenue desc limit 10`, P);
   const coupons = await q<{ code: string; uses: number; discount: number }>(
-    `select coupon as code, count(*)::int as uses, sum(discount)::int as discount from orders where coupon is not null and status <> 'cancelled' and ${W} group by 1 order by uses desc`, P);
+    `select coupon as code, count(*)::int as uses, sum(discount)::int as discount from orders where coupon is not null and status <> 'cancelled' and payment_status <> 'pending' and ${W} group by 1 order by uses desc`, P);
   const topCustomers = await q<{ name: string; phone: string; orders: number; spent: number; customer_id: string | null }>(
     `select max(customer->>'name') as name, max(customer->>'phone') as phone, max(customer_id) as customer_id, count(*)::int as orders, sum(total)::int as spent
-     from orders where status <> 'cancelled' and ${W} group by coalesce(customer_id, customer->>'phone') order by spent desc limit 10`, P);
+     from orders where status <> 'cancelled' and payment_status <> 'pending' and ${W} group by coalesce(customer_id, customer->>'phone') order by spent desc limit 10`, P);
 
   // Category split: join order lines to the product's current category.
   const [products, categories] = await Promise.all([listItems<Product>("products"), listItems<Category>("categories")]);

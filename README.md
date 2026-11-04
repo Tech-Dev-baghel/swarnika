@@ -55,7 +55,49 @@ and the `SMTP_*` values if you want emails. See `.env.example`.
 `npm install && npm run build && npm start` (port 3000). Put it behind https (e.g. Caddy or Nginx) and set
 `COOKIE_SECURE=1`. Use `DATABASE_URL` for a Postgres server, or leave it empty to use the built-in one in `data/`.
 
-## 4. The admin panel
+## 4. Online payments (Razorpay), DTDC courier, COD and GST
+
+Everything below is switched on by adding keys in **Vercel → Settings → Environment Variables** and then
+**Deployments → ⋯ → Redeploy**. Admin → Gold Rates & Settings shows a green dot for each connection that works.
+
+### Razorpay (UPI, cards, netbanking, wallets, EMI)
+1. Sign up at razorpay.com and finish the business KYC.
+2. Dashboard → **Account & Settings → API Keys → Generate Test Key**. Add `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET` in Vercel, redeploy.
+3. Place a test order on your site with Razorpay's test UPI/card details (no real money moves).
+4. Dashboard → **Webhooks → Add New Webhook**: URL `https://YOUR-SITE/api/payments/razorpay/webhook`, any secret you choose,
+   events `payment.captured`, `payment.failed`, `refund.processed`. Put the same secret in `RAZORPAY_WEBHOOK_SECRET`.
+   (This confirms payments even if the customer closes the browser right after paying.)
+5. When it works, generate **Live** keys, replace the two key variables in Vercel, create the webhook again in Live mode, redeploy.
+
+How it behaves: online orders are confirmed automatically when paid and get a GST invoice number. If the customer doesn't pay,
+the order waits 30 minutes (they can press **Pay now** in their account or on Track Order), then cancels itself and the stock is
+released. Owners and managers can refund from the order in the admin.
+
+### DTDC
+1. Ask your DTDC account manager for **API access**: API key, customer code, service type, and tracking username/password.
+2. Add `DTDC_API_KEY`, `DTDC_CUSTOMER_CODE`, `DTDC_SERVICE_TYPE`, `DTDC_TRACK_USERNAME`, `DTDC_TRACK_PASSWORD` in Vercel
+   (`DTDC_ENV=staging` while using their test keys). Redeploy.
+3. Admin → Settings → **Courier pickup address**: fill phone, address and pincode.
+4. In Admin → Orders open an order → **Book DTDC shipment** (enter parcel weight) → **Print label**. COD orders tell DTDC to collect the cash.
+   **Refresh tracking** pulls DTDC's status; the order moves to Shipped/Delivered by itself, and customers see the courier timeline.
+   Without DTDC keys you can still type a tracking number from any courier with **Add tracking number**.
+
+DTDC contracts differ slightly. If DTDC rejects a booking, the admin shows DTDC's exact message — compare it with the API
+document DTDC gave you.
+
+### Cash on delivery and shipping rules (Admin → Settings → Checkout)
+COD on/off, a maximum order value for COD (default ₹50,000 — jewellery above that must be paid online), an extra COD fee,
+pincodes where COD is not allowed, shipping charge and free-shipping limit. The checkout and the server both apply them.
+Pincodes are checked as the customer types: city and state fill in by themselves (India Post), and with DTDC connected the
+site also checks DTDC delivery and COD for that pincode.
+
+### GST invoice (Admin → Settings → GST invoice)
+Fill your registered name, **GSTIN**, state and default HSN (7113 for jewellery of precious metal — confirm with your CA; each
+product can have its own HSN). Invoices are numbered PREFIX/26-27/0001 per financial year when an order is paid online or
+confirmed. Same state as you → CGST 1.5% + SGST 1.5%, other states → IGST 3%. Customers can add their GSTIN at checkout and
+download the invoice from My Account. The CSV export includes taxable value and CGST/SGST/IGST for your accountant.
+
+## 5. The admin panel
 
 | Section | What it does |
 |---|---|
@@ -71,7 +113,7 @@ and the `SMTP_*` values if you want emails. See `.env.example`.
 | Gold Rates & Settings | Daily rates (all prices update instantly), store details, announcement bar |
 | Staff & Roles, Activity Log, Backup, My Profile | Team accounts, who-did-what history, download/restore everything |
 
-## 5. Backups
+## 6. Backups
 **Admin → Backup → Download now** gives one JSON file with the whole catalogue, orders, customers and settings
 (passwords are never included). **Restore** loads such a file back. Neon also keeps its own point-in-time history.
 

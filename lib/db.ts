@@ -5,12 +5,15 @@ import { PAGE_SEED } from "./pages-seed";
 import { priceOf } from "./pricing";
 import { SEED } from "./seed";
 import { driver, dbKind, isPersistent, type Q } from "./sql";
+import { gstSplit } from "./india";
 import type {
-  AdminUser, Appointment, AuditEntry, Customer, DB, Message, Order, OrderStatus, Page, Product, PublicData, Rate, Review, Role, Settings, Subscriber,
+  AdminUser, Appointment, AuditEntry, Customer, DB, GstInfo, Message, Order, OrderStatus, Page, Payment, PaymentMethod, PaymentStatus, Product, PublicData, Rate, Review, Role, Settings, Shipment, Subscriber,
 } from "./types";
 
 export { dbKind, isPersistent };
 export class StorageError extends Error {}
+/** A checkout rule failed (e.g. COD not allowed) — the order is not created. */
+export class CheckoutError extends Error {}
 export const READONLY_MSG =
   "The website isn't connected to a database yet, so this can't be saved. In Vercel open Storage → Create Database → Neon (Postgres) → connect it to this project, then redeploy.";
 
@@ -45,6 +48,17 @@ create table if not exists media (id text primary key, content_type text not nul
 create table if not exists password_resets (token_hash text primary key, user_type text not null, user_id text not null, expires_at timestamptz not null, used boolean not null default false);
 create table if not exists audit_log (id text primary key, created_at timestamptz not null default now(), actor text not null, action text not null, detail text not null default '');
 create index if not exists audit_created on audit_log (created_at);
+alter table orders add column if not exists shipping_fee integer not null default 0;
+alter table orders add column if not exists cod_fee integer not null default 0;
+alter table orders add column if not exists payment_method text not null default 'cod';
+alter table orders add column if not exists payment_status text not null default 'cod';
+alter table orders add column if not exists payment jsonb not null default '{}';
+alter table orders add column if not exists shipment jsonb;
+alter table orders add column if not exists invoice_no text;
+alter table orders add column if not exists invoice_date timestamptz;
+alter table orders add column if not exists gst jsonb;
+create unique index if not exists orders_invoice_no on orders (invoice_no) where invoice_no is not null;
+create index if not exists orders_rzp on orders ((payment->>'rzpOrderId'));
 `;
 
 const g = globalThis as unknown as { __swReady?: Promise<void> };
@@ -163,19 +177,74 @@ export const getPublicData = cache(async (): Promise<PublicData> => {
     brides: by("brides") as never,
     stores: by("stores") as never,
     testimonials: by("testimonials") as never,
+    features: {
+      online: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      dtdc: Boolean(process.env.DTDC_API_KEY && process.env.DTDC_CUSTOMER_CODE),
+    },
   };
 });
 
 /* ------------------------------------------------------------------ orders */
 
-type OrderRow = { id: string; created_at: Date | string; customer_id: string | null; status: OrderStatus; subtotal: number; discount: number; total: number; coupon: string | null; customer: Order["customer"]; items: Order["items"]; notes: string };
+type OrderRow = {
+  id: string; created_at: Date | string; customer_id: string | null; status: OrderStatus; subtotal: number; discount: number; total: number; coupon: string | null;
+  customer: Order["customer"]; items: Order["items"]; notes: string; shipping_fee: number; cod_fee: number; payment_method: PaymentMethod; payment_status: PaymentStatus;
+  payment: Payment | null; shipment: Shipment | null; invoice_no: string | null; invoice_date: Date | string | null; gst: GstInfo | null;
+};
 const iso = (v: Date | string | null) => (v ? new Date(v).toISOString() : null);
 const toOrder = (r: OrderRow): Order => ({
   id: r.id, createdAt: iso(r.created_at)!, customerId: r.customer_id, status: r.status, subtotal: r.subtotal, discount: r.discount, total: r.total,
-  coupon: r.coupon ?? undefined, customer: r.customer, items: r.items, notes: r.notes,
+  coupon: r.coupon ?? undefined, customer: r.customer, items: r.items, notes: r.notes, shippingFee: r.shipping_fee ?? 0, codFee: r.cod_fee ?? 0,
+  paymentMethod: r.payment_method ?? "cod", paymentStatus: r.payment_status ?? "cod", payment: r.payment ?? {}, shipment: r.shipment ?? null,
+  invoiceNo: r.invoice_no ?? null, invoiceDate: iso(r.invoice_date), gst: r.gst ?? null,
 });
 
-export async function createOrder(input: { customer: Order["customer"]; lines: { id: string; qty: number; size?: string }[]; coupon?: string; customerId?: string | null }) {
+/** Online orders not paid within this many minutes are cancelled and their stock released. */
+export const PAYMENT_WINDOW_MIN = Number(process.env.PAYMENT_WINDOW_MINUTES) || 30;
+
+/** Gives the order the next GST invoice number for its financial year (Apr–Mar), e.g. SW/26-27/0001. */
+async function assignInvoice(q: Q, id: string) {
+  const r = await q<{ invoice_no: string | null }>(`select invoice_no from orders where id = $1`, [id]);
+  if (!r.length || r[0].invoice_no) return;
+  const st = ((await q<{ value: Partial<Settings> }>(`select value from kv where key = 'settings'`))[0]?.value) ?? {};
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+  const fy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const fyLabel = `${String(fy).slice(2)}-${String(fy + 1).slice(2)}`;
+  const seq = await q<{ value: number }>(
+    `insert into kv (key, value) values ($1, '1') on conflict (key) do update set value = to_jsonb((kv.value #>> '{}')::int + 1) returning value`, [`invoice_seq:${fyLabel}`]);
+  const prefix = String(st.invoicePrefix || SEED.settings.invoicePrefix || "INV").replace(/[^A-Za-z0-9-]/g, "").slice(0, 8) || "INV";
+  await q(`update orders set invoice_no = $2, invoice_date = now() where id = $1`, [id, `${prefix}/${fyLabel}/${String(Number(seq[0].value)).padStart(4, "0")}`]);
+}
+
+async function restock(q: Q, items: Order["items"], sign: 1 | -1) {
+  for (const it of items) {
+    await q(`update items set data = jsonb_set(data, '{stock}', to_jsonb(greatest(0, coalesce((data->>'stock')::int, 0) + $2::int))) where kind = 'products' and id = $1`, [it.id, sign * it.qty]);
+  }
+}
+
+const g2 = globalThis as unknown as { __swExpiry?: number };
+/** Cancels online orders whose payment never arrived (runs at most once a minute). */
+export async function expireUnpaid(force = false) {
+  if (!isPersistent()) return 0;
+  if (!force && g2.__swExpiry && Date.now() - g2.__swExpiry < 60_000) return 0;
+  g2.__swExpiry = Date.now();
+  return (await db()).tx(async (q) => {
+    const rows = await q<OrderRow>(
+      `select * from orders where payment_method = 'online' and payment_status = 'pending' and status = 'new' and created_at < now() - ($1 || ' minutes')::interval for update`, [String(PAYMENT_WINDOW_MIN)]);
+    for (const r of rows) {
+      await restock(q, r.items, 1);
+      await q(`update orders set status = 'cancelled', payment_status = 'expired' where id = $1`, [r.id]);
+    }
+    return rows.length;
+  });
+}
+
+export async function createOrder(input: {
+  customer: Order["customer"]; lines: { id: string; qty: number; size?: string }[]; coupon?: string; customerId?: string | null;
+  paymentMethod?: PaymentMethod; sellerState?: string;
+  /** Works out fees for the bag total after discount; return `error` to refuse the order. */
+  fees?: (afterDiscount: number, method: PaymentMethod) => { shippingFee: number; codFee: number; error?: string };
+}) {
   assertWritable();
   return (await db()).tx(async (q) => {
     const rates = ((await q<{ value: Rate[] }>(`select value from kv where key = 'rates'`))[0]?.value) ?? SEED.rates;
@@ -193,16 +262,76 @@ export async function createOrder(input: { customer: Order["customer"]; lines: {
     const subtotal = items.reduce((n, i) => n + i.price * i.qty, 0);
     const coupons = (await q<ItemRow>(`select id, data, sort from items where kind = 'coupons'`)).map(toItem) as never;
     const { discount, coupon } = applyCoupon(coupons, input.coupon, subtotal);
+    const method: PaymentMethod = input.paymentMethod === "online" ? "online" : "cod";
+    const f = input.fees?.(subtotal - discount, method) ?? { shippingFee: 0, codFee: 0 };
+    if (f.error) throw new CheckoutError(f.error);
+    const shippingFee = Math.max(0, Math.round(f.shippingFee));
+    const codFee = method === "cod" ? Math.max(0, Math.round(f.codFee)) : 0;
+    const total = subtotal - discount + shippingFee + codFee;
+    const split = gstSplit(total, 3, input.sellerState ?? "", input.customer.state ?? "");
+    const gst: GstInfo = { rate: 3, sellerState: input.sellerState ?? "", buyerState: input.customer.state ?? "", intra: split.intra, taxable: split.taxable, cgst: split.cgst, sgst: split.sgst, igst: split.igst };
     const id = newId("ORD").toUpperCase();
     const rows = await q<OrderRow>(
-      `insert into orders (id, customer_id, status, subtotal, discount, total, coupon, customer, items) values ($1,$2,'new',$3,$4,$5,$6,$7,$8) returning *`,
-      [id, input.customerId ?? null, subtotal, discount, subtotal - discount, coupon?.code ?? null, JSON.stringify(input.customer), JSON.stringify(items)],
+      `insert into orders (id, customer_id, status, subtotal, discount, total, coupon, customer, items, shipping_fee, cod_fee, payment_method, payment_status, gst)
+       values ($1,$2,'new',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) returning *`,
+      [id, input.customerId ?? null, subtotal, discount, total, coupon?.code ?? null, JSON.stringify(input.customer), JSON.stringify(items),
+        shippingFee, codFee, method, method === "online" ? "pending" : "cod", JSON.stringify(gst)],
     );
     return toOrder(rows[0]);
   });
 }
 
+/** Saves gateway details (e.g. the Razorpay order id) without changing the payment status. */
+export async function setPaymentInfo(id: string, patch: Partial<Payment>) {
+  assertWritable();
+  await (await db()).query(`update orders set payment = coalesce(payment, '{}'::jsonb) || $2::jsonb where id = $1`, [id, JSON.stringify(patch)]);
+}
+
+/** Marks an online order as paid (idempotent). Re-reserves stock if it had already expired. */
+export async function markPaid(id: string, patch: Partial<Payment>) {
+  assertWritable();
+  return (await db()).tx(async (q) => {
+    const r = await q<OrderRow>(`select * from orders where id = $1 for update`, [id]);
+    if (!r.length) return null;
+    const o = r[0];
+    if (o.payment_status === "paid" || o.payment_status === "refunded") return { order: toOrder(o), changed: false };
+    if (o.status === "cancelled") await restock(q, o.items, -1);
+    await q(`update orders set payment_status = 'paid', status = case when status in ('new','cancelled') then 'confirmed' else status end,
+             payment = (coalesce(payment, '{}'::jsonb) - 'lastError') || $2::jsonb where id = $1`, [id, JSON.stringify({ ...patch, paidAt: new Date().toISOString() })]);
+    await assignInvoice(q, id);
+    const out = await q<OrderRow>(`select * from orders where id = $1`, [id]);
+    return { order: toOrder(out[0]), changed: true };
+  });
+}
+
+export async function markRefunded(id: string, patch: Partial<Payment>) {
+  assertWritable();
+  const r = await (await db()).query<OrderRow>(
+    `update orders set payment_status = 'refunded', payment = coalesce(payment, '{}'::jsonb) || $2::jsonb where id = $1 returning *`, [id, JSON.stringify({ ...patch, refundedAt: new Date().toISOString() })]);
+  return r[0] ? toOrder(r[0]) : null;
+}
+
+export async function findOrderByRzp(rzpOrderId: string) {
+  const r = await (await db()).query<OrderRow>(`select * from orders where payment->>'rzpOrderId' = $1`, [rzpOrderId]);
+  return r[0] ? toOrder(r[0]) : null;
+}
+
+/** Saves (or clears) the courier shipment; optionally moves the order status along. */
+export async function setShipment(id: string, shipment: Shipment | null, status?: OrderStatus) {
+  assertWritable();
+  return (await db()).tx(async (q) => {
+    const r = await q<OrderRow>(`select * from orders where id = $1 for update`, [id]);
+    if (!r.length) return null;
+    const o = r[0];
+    await q(`update orders set shipment = $2, status = $3 where id = $1`, [id, shipment ? JSON.stringify(shipment) : null, status ?? o.status]);
+    if (status && ["confirmed", "shipped", "delivered"].includes(status)) await assignInvoice(q, id);
+    if (status === "delivered" && o.payment_status === "cod") await q(`update orders set payment_status = 'paid', payment = coalesce(payment,'{}'::jsonb) || jsonb_build_object('method','cod','paidAt', now()::text) where id = $1`, [id]);
+    return toOrder((await q<OrderRow>(`select * from orders where id = $1`, [id]))[0]);
+  });
+}
+
 export async function listOrders(f: { status?: string; q?: string; customerId?: string; from?: string; to?: string; limit?: number } = {}) {
+  await expireUnpaid().catch(() => 0);
   const where: string[] = [], params: unknown[] = [];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   if (f.status && f.status !== "all") where.push(`status = ${p(f.status)}`);
@@ -215,6 +344,7 @@ export async function listOrders(f: { status?: string; q?: string; customerId?: 
 }
 
 export async function getOrder(id: string) {
+  await expireUnpaid().catch(() => 0);
   const r = await (await db()).query<OrderRow>(`select * from orders where id = $1`, [id]);
   return r[0] ? toOrder(r[0]) : null;
 }
@@ -226,13 +356,14 @@ export async function updateOrder(id: string, patch: { status?: OrderStatus; not
     if (!r.length) return null;
     const prev = r[0];
     if (patch.status && patch.status !== prev.status && (patch.status === "cancelled" || prev.status === "cancelled")) {
-      const sign = patch.status === "cancelled" ? 1 : -1;
-      for (const it of prev.items) {
-        await q(`update items set data = jsonb_set(data, '{stock}', to_jsonb(greatest(0, coalesce((data->>'stock')::int, 0) + $2::int))) where kind = 'products' and id = $1`, [it.id, sign * it.qty]);
-      }
+      await restock(q, prev.items, patch.status === "cancelled" ? 1 : -1);
     }
-    const out = await q<OrderRow>(`update orders set status = $2, notes = $3 where id = $1 returning *`, [id, patch.status ?? prev.status, patch.notes ?? prev.notes]);
-    return toOrder(out[0]);
+    await q(`update orders set status = $2, notes = $3 where id = $1`, [id, patch.status ?? prev.status, patch.notes ?? prev.notes]);
+    if (patch.status && ["confirmed", "shipped", "delivered"].includes(patch.status) && !(prev.payment_method === "online" && prev.payment_status !== "paid")) await assignInvoice(q, id);
+    if (patch.status === "delivered" && prev.payment_status === "cod") {
+      await q(`update orders set payment_status = 'paid', payment = coalesce(payment,'{}'::jsonb) || jsonb_build_object('method','cod','paidAt', now()::text) where id = $1`, [id]);
+    }
+    return toOrder((await q<OrderRow>(`select * from orders where id = $1`, [id]))[0]);
   });
 }
 
@@ -317,7 +448,7 @@ export async function listCustomers(q = "") {
   const v = `%${q.toLowerCase()}%`;
   const rows = await (await db()).query<CustRow & { orders: number; spent: number }>(
     `select c.*, coalesce(o.n, 0)::int as orders, coalesce(o.s, 0)::int as spent from customers c
-     left join (select customer_id, count(*) n, sum(total) s from orders where status <> 'cancelled' group by customer_id) o on o.customer_id = c.id
+     left join (select customer_id, count(*) n, sum(total) s from orders where status <> 'cancelled' and payment_status <> 'pending' group by customer_id) o on o.customer_id = c.id
      where $1 = '%%' or lower(c.name) like $1 or lower(coalesce(c.email,'')) like $1 or coalesce(c.phone,'') like $1
      order by c.created_at desc limit 2000`, [v]);
   return rows.map((r) => ({ ...toCustomer(r), orders: r.orders, spent: r.spent }));
@@ -356,9 +487,12 @@ export async function importAll(data: DB) {
       }
     }
     if (Array.isArray(data.orders)) for (const o of data.orders) {
-      await q(`insert into orders (id, created_at, customer_id, status, subtotal, discount, total, coupon, customer, items, notes) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-               on conflict (id) do update set status = excluded.status, notes = excluded.notes`,
-        [o.id, o.createdAt, o.customerId ?? null, o.status, Math.round(o.subtotal), Math.round(o.discount), Math.round(o.total), o.coupon ?? null, JSON.stringify(o.customer), JSON.stringify(o.items), o.notes ?? ""]);
+      await q(`insert into orders (id, created_at, customer_id, status, subtotal, discount, total, coupon, customer, items, notes, shipping_fee, cod_fee, payment_method, payment_status, payment, shipment, invoice_no, invoice_date, gst)
+               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+               on conflict (id) do update set status = excluded.status, notes = excluded.notes, payment_status = excluded.payment_status, payment = excluded.payment, shipment = excluded.shipment`,
+        [o.id, o.createdAt, o.customerId ?? null, o.status, Math.round(o.subtotal), Math.round(o.discount), Math.round(o.total), o.coupon ?? null, JSON.stringify(o.customer), JSON.stringify(o.items), o.notes ?? "",
+          Math.round(o.shippingFee ?? 0), Math.round(o.codFee ?? 0), o.paymentMethod ?? "cod", o.paymentStatus ?? "cod", JSON.stringify(o.payment ?? {}), o.shipment ? JSON.stringify(o.shipment) : null,
+          o.invoiceNo ?? null, o.invoiceDate ?? null, o.gst ? JSON.stringify(o.gst) : null]);
     }
     if (Array.isArray(data.pages)) for (const p of data.pages) await q(`insert into pages (slug, title, body) values ($1,$2,$3) on conflict (slug) do update set title = excluded.title, body = excluded.body`, [p.slug, p.title, p.body]);
     if (Array.isArray(data.subscribers)) for (const s of data.subscribers) await q(`insert into subscribers (id, email, created_at) values ($1,$2,$3) on conflict do nothing`, [s.id, s.email, s.createdAt]);

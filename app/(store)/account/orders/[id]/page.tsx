@@ -1,16 +1,20 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Photo from "@/components/Photo";
+import { PayNow, PaymentPill, ShipmentBox } from "@/components/OrderExtras";
 import { StatusSteps } from "@/components/OrderStatus";
 import { accountUser } from "@/lib/auth";
 import { getOrder, getSettings } from "@/lib/db";
 import { inr } from "@/lib/pricing";
+import { refreshTracking } from "@/lib/shipping";
 
 export default async function MyOrder({ params }: { params: Promise<{ id: string }> }) {
   const me = await accountUser();
   const { id } = await params;
-  const [o, s] = await Promise.all([getOrder(id), getSettings()]);
-  if (!o || o.customerId !== me.id) notFound();
+  const [found, s] = await Promise.all([getOrder(id), getSettings()]);
+  if (!found || found.customerId !== me.id) notFound();
+  const o = await refreshTracking(found, 30).catch(() => found);
+  const sh = o.shipment && !o.shipment.cancelled ? o.shipment : null;
   const c = o.customer;
   return (
     <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
@@ -19,7 +23,12 @@ export default async function MyOrder({ params }: { params: Promise<{ id: string
           <h2 className="font-mono text-sm">{o.id}</h2>
           <p className="text-sm text-ink/60">Placed {new Date(o.createdAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" })}</p>
         </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm"><span className="text-ink/60">Payment:</span> <PaymentPill method={o.paymentMethod} status={o.paymentStatus} />
+          {o.invoiceNo && <Link href={`/account/orders/${o.id}/invoice`} className="ml-auto text-wine-700 underline">GST invoice {o.invoiceNo}</Link>}</div>
+        {o.paymentMethod === "online" && o.paymentStatus === "pending" && o.status === "new" && <div className="mt-4"><PayNow orderId={o.id} total={o.total} /></div>}
+        {o.paymentStatus === "expired" && <p className="mt-4 rounded-xl bg-wine-50 p-3 text-sm text-wine-800">Payment wasn&apos;t received within 30 minutes, so this order was cancelled. If money was deducted, it is refunded automatically by your bank or contact us.</p>}
         <div className="mt-6"><StatusSteps s={o.status} /></div>
+        {sh && <div className="mt-6"><ShipmentBox carrier={sh.carrier === "dtdc" ? "DTDC" : sh.carrierName ?? "Courier"} awb={sh.awb} status={sh.status} events={sh.events.slice(0, 15)} /></div>}
         <ul className="mt-6 divide-y divide-wine-100">
           {o.items.map((i) => (
             <li key={i.id} className="flex items-center gap-3 py-3 text-sm">
@@ -32,13 +41,15 @@ export default async function MyOrder({ params }: { params: Promise<{ id: string
         <dl className="ml-auto mt-4 max-w-64 space-y-1 text-sm">
           <div className="flex justify-between"><dt className="text-ink/60">Subtotal</dt><dd>{inr(o.subtotal)}</dd></div>
           {o.discount > 0 && <div className="flex justify-between text-emerald-700"><dt>Discount {o.coupon}</dt><dd>−{inr(o.discount)}</dd></div>}
+          {!!o.shippingFee && <div className="flex justify-between"><dt className="text-ink/60">Shipping</dt><dd>{inr(o.shippingFee)}</dd></div>}
+          {!!o.codFee && <div className="flex justify-between"><dt className="text-ink/60">Cash on delivery fee</dt><dd>{inr(o.codFee)}</dd></div>}
           <div className="flex justify-between border-t border-wine-100 pt-2 font-semibold text-wine-800"><dt>Total</dt><dd>{inr(o.total)}</dd></div>
         </dl>
       </section>
       <div className="space-y-6 text-sm">
         <section className="rounded-3xl border border-wine-100 bg-white p-6">
           <h2 className="font-display text-2xl text-wine-800">Delivery to</h2>
-          <p className="mt-3">{c.name}<br />{c.phone}<br />{c.address}, {c.city} – {c.pincode}</p>
+          <p className="mt-3">{c.name}<br />{c.phone}<br />{c.address}, {c.city}{c.state ? `, ${c.state}` : ""} – {c.pincode}</p>
         </section>
         <section className="rounded-3xl border border-wine-100 bg-white p-6">
           <h2 className="font-display text-2xl text-wine-800">Need help?</h2>

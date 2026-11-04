@@ -11,7 +11,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const q = (await db()).query;
   const [[c]] = await Promise.all([
     q<{ orders: number; appts: number; msgs: number; reviews: number }>(`select
-      (select count(*) from orders where status = 'new')::int as orders,
+      (select count(*) from orders where status = 'new' and payment_status <> 'pending')::int as orders,
       (select count(*) from appointments where status = 'pending')::int as appts,
       (select count(*) from messages where status = 'new')::int as msgs,
       (select count(*) from reviews where status = 'pending')::int as reviews`),
